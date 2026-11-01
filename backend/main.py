@@ -77,21 +77,28 @@ LAST_VALID_PRICES = {
     TOKEN_MINTS["bSOL"]: {"usdPrice": 126.60, "liquidity": 20000000.0, "decimals": 9}
 }
 
+PRICE_CACHE_TS = 0
+PRICE_CACHE_TTL = 8 # 8-second cache to avoid 429 rate limits
+
 def fetch_jup_prices(mints: list[str]) -> dict:
-    global LAST_VALID_PRICES
+    global LAST_VALID_PRICES, PRICE_CACHE_TS
+    now = time.time()
+    if (now - PRICE_CACHE_TS) < PRICE_CACHE_TTL:
+        return LAST_VALID_PRICES
     ids_str = ",".join(mints)
     url = f"{JUP_API_BASE}/price/v3?ids={ids_str}"
     req = urllib.request.Request(url, headers={"User-Agent": "SolanaQuantTerminal/1.0"})
     try:
-        with urllib.request.urlopen(req, timeout=5) as resp:
+        with urllib.request.urlopen(req, timeout=3) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             if data and isinstance(data, dict):
                 for k, v in data.items():
                     if v and isinstance(v, dict) and "usdPrice" in v:
                         LAST_VALID_PRICES[k] = v
+                PRICE_CACHE_TS = now
                 return LAST_VALID_PRICES
     except Exception as e:
-        print(f"Warning: Jupiter price fetch fallback to cache: {e}")
+        PRICE_CACHE_TS = now # backoff on rate limit
     return LAST_VALID_PRICES
 
 def fetch_jup_quote(input_mint: str, output_mint: str, amount_atomic: int, slippage_bps: int = 50) -> dict:
@@ -637,6 +644,66 @@ def simulate_swap(req: SwapSimRequest):
         "route_plan": quote.get("routePlan", []),
         "slot_context": quote.get("contextSlot")
     }
+
+# =============================================================
+# AUTONOMOUS DEMO PAPER TRADING ENGINE (1.0 SOL / MAX 2 SWAPS)
+# =============================================================
+from backend.demo_engine import (
+    load_demo_state,
+    save_demo_state,
+    reset_demo_state,
+    toggle_demo_state,
+    sync_demo_state,
+    evaluate_demo_tick
+)
+
+@app.get("/api/demo/state")
+def get_demo_state_api():
+    """Returns current paper trading demo status and portfolio balance instantly."""
+    return load_demo_state()
+
+@app.post("/api/demo/toggle")
+def toggle_demo_api(running: bool = Query(None)):
+    """Toggle demo bot execution (Start / Pause)."""
+    state = toggle_demo_state(running)
+    if state.get("is_running", False):
+        try:
+            pairs_data = get_pairs_rotation()
+            sol_p = fetch_jup_prices([TOKEN_MINTS["SOL"]]).get(TOKEN_MINTS["SOL"], {}).get("usdPrice", 95.0)
+            state = evaluate_demo_tick(pairs_data, sol_p)
+        except Exception as e:
+            print("Error ticking on toggle:", e)
+    return state
+
+@app.post("/api/demo/reset")
+def reset_demo_api():
+    """Reset paper trading history and restart fresh with 1.0 SOL."""
+    state = reset_demo_state()
+    try:
+        pairs_data = get_pairs_rotation()
+        sol_p = fetch_jup_prices([TOKEN_MINTS["SOL"]]).get(TOKEN_MINTS["SOL"], {}).get("usdPrice", 95.0)
+        state = evaluate_demo_tick(pairs_data, sol_p)
+    except Exception as e:
+        print("Error ticking on reset:", e)
+    return state
+
+@app.post("/api/demo/tick")
+def demo_tick_api():
+    """Tick evaluation: checks open positions for exit and oversold pairs for entry."""
+    try:
+        pairs_data = get_pairs_rotation()
+        sol_p = fetch_jup_prices([TOKEN_MINTS["SOL"]]).get(TOKEN_MINTS["SOL"], {}).get("usdPrice", 95.0)
+        return evaluate_demo_tick(pairs_data, sol_p)
+    except Exception as e:
+        return {"error": str(e), "state": load_demo_state()}
+
+class DemoSyncRequest(BaseModel):
+    state: dict
+
+@app.post("/api/demo/sync")
+def demo_sync_api(req: DemoSyncRequest):
+    """Syncs state from browser localStorage if server was cold-started."""
+    return sync_demo_state(req.state)
 
 # Mount static files dynamically for local execution
 current_dir = os.path.dirname(os.path.abspath(__file__))

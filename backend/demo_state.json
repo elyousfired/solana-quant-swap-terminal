@@ -1,0 +1,31 @@
+{
+  "is_running": true,
+  "initial_capital_sol": 1.0,
+  "current_balance_sol": 1.0,
+  "available_sol": 0.55,
+  "total_profit_sol": 0.0,
+  "total_profit_pct": 0.0,
+  "max_concurrent_positions": 2,
+  "active_positions": [
+    {
+      "id": "trade_1793570694_KMNO",
+      "pair": "SOL / KMNO",
+      "base_token": "KMNO",
+      "quote_token": "SOL",
+      "entry_time": 1793570694.0047493,
+      "sol_invested": 0.45,
+      "tokens_held": 1307.1277,
+      "entry_ratio": 0.00034374987509854687,
+      "current_ratio": 0.00034374987509854687,
+      "entry_z_score": -2.72,
+      "current_z_score": -2.72,
+      "target_yield_pct": 5.96,
+      "unrealized_pnl_pct": 0.0,
+      "current_sol_value": 0.45,
+      "status": "OPEN"
+    }
+  ],
+  "trade_history": [],
+  "last_tick_time": 1793570694.0047493,
+  "created_at": 1793570692.2130227
+}
