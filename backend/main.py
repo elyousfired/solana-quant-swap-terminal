@@ -191,6 +191,58 @@ def get_lst_depeg_data():
         "lst_assets": results
     }
 
+BINANCE_SYMBOLS = {
+    "SOL": "SOLUSDT", "JUP": "JUPUSDT", "JTO": "JTOUSDT",
+    "RAY": "RAYUSDT", "KMNO": "KMNOUSDT", "MET": "METUSDT", "PUMP": "PUMPUSDT", "USDC": "USDCUSDT"
+}
+
+CANDLE_CACHE = {}
+CACHE_TTL = 120  # 2 minutes cache to avoid rate limits
+
+def get_24h_candles(sym: str) -> list[float]:
+    now = time.time()
+    if sym in CANDLE_CACHE and (now - CANDLE_CACHE[sym]["ts"]) < CACHE_TTL:
+        return CANDLE_CACHE[sym]["closes"]
+    try:
+        bsym = BINANCE_SYMBOLS.get(sym, f"{sym}USDT")
+        url = f"https://api.binance.com/api/v3/klines?symbol={bsym}&interval=1h&limit=24"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        raw = json.loads(urllib.request.urlopen(req, timeout=3).read())
+        closes = [float(c[4]) for c in raw]
+        if closes:
+            CANDLE_CACHE[sym] = {"ts": now, "closes": closes}
+            return closes
+    except Exception:
+        pass
+    return CANDLE_CACHE.get(sym, {}).get("closes", [])
+
+def compute_ratio_series(token_a: str, token_b: str, live_p_a: float, live_p_b: float):
+    """
+    Computes 24h ratio time series (Token B / Token A, e.g. JUP/SOL or SOL/USDC).
+    Returns list of 24 points, 24h percentage change vs SOL, mean, min, and max.
+    """
+    if token_b == "USDC":
+        closes_a = get_24h_candles(token_a)
+        if closes_a:
+            ratios = list(closes_a)
+            ratios[-1] = live_p_a
+            chg = ((ratios[-1] - ratios[0]) / ratios[0]) * 100.0 if ratios[0] > 0 else 0.0
+            return ratios, round(chg, 2), round(float(np.mean(ratios)), 2), round(min(ratios), 2), round(max(ratios), 2)
+        return [live_p_a] * 24, 0.0, live_p_a, live_p_a, live_p_a
+
+    closes_sol = get_24h_candles("SOL")
+    closes_tok = get_24h_candles(token_b)
+
+    if closes_sol and closes_tok and len(closes_sol) == len(closes_tok):
+        ratios = [t / s for t, s in zip(closes_tok, closes_sol)]
+        live_ratio = (live_p_b / live_p_a) if live_p_a > 0 else ratios[-1]
+        ratios[-1] = live_ratio
+        chg = ((ratios[-1] - ratios[0]) / ratios[0]) * 100.0 if ratios[0] > 0 else 0.0
+        return ratios, round(chg, 2), round(float(np.mean(ratios)), 8), round(min(ratios), 8), round(max(ratios), 8)
+    
+    fallback_r = (live_p_b / live_p_a) if live_p_a > 0 else 0.00262
+    return [fallback_r] * 24, 0.0, fallback_r, fallback_r, fallback_r
+
 @app.get("/api/pairs-rotation")
 def get_pairs_rotation():
     """Engine 2: Ecosystem Pairs Statistical Arbitrage (Z-Score & Half-Life)."""
@@ -231,6 +283,8 @@ def get_pairs_rotation():
             target_yield_pct = (math.exp(abs(z) * 0.015) - 1.0) * 100.0 + 1.8
             action = f"Oversold! Swap {item['quote']} -> {item['base']} (Target: +{target_yield_pct:.2f}% tokens)"
             
+        ratios, r_chg, _, _, _ = compute_ratio_series(item["quote"], item["base"], quote_p, base_p)
+            
         results.append({
             "pair": item["pair"],
             "base_token": item["base"],
@@ -238,6 +292,8 @@ def get_pairs_rotation():
             "base_usd": base_p,
             "quote_usd": quote_p,
             "current_ratio": current_ratio,
+            "ratio_history": ratios,
+            "ratio_24h_change_pct": r_chg,
             "z_score": z,
             "ou_half_life_hours": half_life,
             "hedge_ratio_beta": item["beta"],
@@ -489,6 +545,14 @@ def get_shannon_demon(pair: str = "ALL"):
         cfg["drift_pct"] = abs_drift
         cfg["action_required"] = action_req
         cfg["recommended_swap"] = rec
+        ratios, r_chg, r_mean, r_min, r_max = compute_ratio_series(token_a, token_b, p_a, p_b)
+        cfg["ratio_history"] = ratios
+        cfg["ratio_24h_change_pct"] = r_chg
+        cfg["ratio_24h_mean"] = r_mean
+        cfg["ratio_24h_min"] = r_min
+        cfg["ratio_24h_max"] = r_max
+        cfg["token_per_sol"] = round(1.0 / current_r, 2) if current_r > 0 else 0.0
+        cfg["sol_per_token"] = current_r
         cfg["current_ratio"] = current_r
         all_pairs_results.append(cfg)
 

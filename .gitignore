@@ -25,3 +25,5 @@ intraday_summary.json
 # OS files
 .DS_Store
 Thumbs.db
+
+.vercel

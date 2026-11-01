@@ -139,9 +139,59 @@ async function loadLstDepeg() {
 }
 
 function formatRatio(r) {
-  if (!r || isNaN(r)) return '0.000000';
+  if (!r || isNaN(r)) return '0.0000';
+  if (r >= 10.0) return r.toFixed(2);
+  if (r >= 1.0) return r.toFixed(4);
   if (r >= 0.001) return r.toFixed(6);
   return r.toFixed(8);
+}
+
+function generateRatioSparkline(data, pairName, width = 280, height = 48) {
+  if (!data || data.length < 2) {
+    return `<div class="h-8 flex items-center justify-center text-[10px] text-gray-600 font-mono">Loading ratio...</div>`;
+  }
+
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const range = (max - min) || (min * 0.005) || 1;
+
+  const padY = 4;
+  const usableH = height - (padY * 2);
+
+  const points = data.map((val, idx) => {
+    const x = (idx / (data.length - 1)) * width;
+    const y = height - padY - ((val - min) / range) * usableH;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+
+  const pathD = `M ${points.join(' L ')}`;
+  const areaD = `M ${points[0]} L ${points.join(' L ')} L ${width},${height} L 0,${height} Z`;
+
+  const isUp = data[data.length - 1] >= data[0];
+  const strokeColor = isUp ? '#14F195' : '#F59E0B';
+  const cleanId = 'spark_' + pairName.replace(/[^a-zA-Z0-9]/g, '_') + '_' + width;
+
+  const mean = data.reduce((a, b) => a + b, 0) / data.length;
+  const meanY = (height - padY - ((mean - min) / range) * usableH).toFixed(1);
+
+  const lastPt = points[points.length - 1].split(',');
+  const lastX = lastPt[0];
+  const lastY = lastPt[1];
+
+  return `
+    <svg viewBox="0 0 ${width} ${height}" class="w-full h-full overflow-visible" preserveAspectRatio="none">
+      <defs>
+        <linearGradient id="${cleanId}" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="${strokeColor}" stop-opacity="0.30"/>
+          <stop offset="100%" stop-color="${strokeColor}" stop-opacity="0.0"/>
+        </linearGradient>
+      </defs>
+      <line x1="0" y1="${meanY}" x2="${width}" y2="${meanY}" stroke="#374151" stroke-dasharray="3,3" stroke-width="1"/>
+      <path d="${areaD}" fill="url(#${cleanId})"/>
+      <path d="${pathD}" fill="none" stroke="${strokeColor}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="${lastX}" cy="${lastY}" r="3" fill="${strokeColor}"/>
+    </svg>
+  `;
 }
 
 // 3. Page 2: Pairs Z-Score Rotation
@@ -168,10 +218,23 @@ async function loadPairsRotation() {
       const outToken = p.z_score <= -2.0 ? p.base_token : p.quote_token;
       const jupSwapUrl = `https://jup.ag/swap/${inToken}-${outToken}`;
 
+      const sparkHtml = generateRatioSparkline(p.ratio_history || [], p.pair, 100, 26);
+      const rChg = p.ratio_24h_change_pct !== undefined ? p.ratio_24h_change_pct : 0.0;
+
       html += `
         <tr class="hover:bg-solana-dark/40 transition">
           <td class="py-3 px-4 font-bold text-white">${p.pair}</td>
           <td class="py-3 px-4 text-gray-300 font-mono">${formatRatio(p.current_ratio)}</td>
+          <td class="py-3 px-4">
+            <div class="flex items-center gap-2">
+              <div class="w-24 h-6">
+                ${sparkHtml}
+              </div>
+              <span class="text-[10px] font-mono font-bold ${rChg >= 0 ? 'text-solana-green' : 'text-amber-400'}">
+                ${rChg >= 0 ? '+' : ''}${rChg.toFixed(1)}%
+              </span>
+            </div>
+          </td>
           <td class="py-3 px-4 font-bold ${zColor}">${p.z_score >= 0 ? '+' : ''}${p.z_score.toFixed(2)}σ</td>
           <td class="py-3 px-4 text-gray-400">${p.ou_half_life_hours}h</td>
           <td class="py-3 px-4">
@@ -296,6 +359,8 @@ async function loadShannon(pair = "ALL") {
       const isRebalance = p.action_required;
       const drift = p.drift_pct !== undefined ? p.drift_pct : 0.0;
       const stats = p.historical_stats || {};
+      const sparkHtml = generateRatioSparkline(p.ratio_history || [], p.pair, 280, 48);
+      const ratioChg = p.ratio_24h_change_pct !== undefined ? p.ratio_24h_change_pct : 0.0;
 
       html += `
         <div class="bg-solana-dark border ${isRebalance ? 'border-amber-500/50 shadow-lg shadow-amber-500/5' : 'border-solana-border'} rounded-2xl p-5 flex flex-col justify-between hover:border-amber-400/50 transition">
@@ -354,6 +419,29 @@ async function loadShannon(pair = "ALL") {
               <div class="bg-solana-card/60 p-2 rounded-lg border border-solana-border text-center">
                 <div class="text-gray-400 text-[10px]">Vol (σ)</div>
                 <div class="font-bold text-amber-400 mt-0.5">${stats.annualized_volatility || '-'}</div>
+              </div>
+            </div>
+
+            <!-- 24h SOL/Token Relative Ratio Mini Chart Box -->
+            <div class="mt-4 bg-solana-card/60 border border-solana-border rounded-xl p-3">
+              <div class="flex items-center justify-between text-[11px] font-mono mb-1.5">
+                <div class="flex items-center gap-1.5">
+                  <span class="text-gray-400 font-bold">24h Relative Ratio:</span>
+                  <span class="text-white font-bold">${tokenB === 'USDC' ? '$' + formatRatio(p.current_ratio) : formatRatio(p.current_ratio) + ' SOL'}</span>
+                </div>
+                <span class="px-2 py-0.5 rounded text-[10px] font-bold ${ratioChg >= 0 ? 'bg-solana-green/20 text-solana-green border border-solana-green/30' : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'}">
+                  ${ratioChg >= 0 ? '+' : ''}${ratioChg.toFixed(2)}% vs SOL
+                </span>
+              </div>
+
+              <div class="w-full h-12 py-1">
+                ${sparkHtml}
+              </div>
+
+              <div class="flex items-center justify-between text-[10px] text-gray-500 font-mono mt-1 pt-1.5 border-t border-solana-border/40">
+                <span>24h Low: ${formatRatio(p.ratio_24h_min || 0)}</span>
+                <span class="text-gray-300 font-bold">${tokenB === 'USDC' ? 'SOL Spot: $' + formatRatio(p.current_ratio) : '1 SOL = ' + (p.token_per_sol ? p.token_per_sol.toLocaleString() : '-') + ' ' + tokenB}</span>
+                <span>24h High: ${formatRatio(p.ratio_24h_max || 0)}</span>
               </div>
             </div>
           </div>
