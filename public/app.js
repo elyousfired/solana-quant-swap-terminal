@@ -345,8 +345,8 @@ async function loadShannon(pair = "ALL") {
       clock.innerText = new Date().toLocaleTimeString();
     }
 
-    const container = document.getElementById('shannon-dashboard');
-    if (!container) return;
+    const tbody = document.getElementById('shannon-table-body') || document.getElementById('shannon-dashboard');
+    if (!tbody) return;
 
     const pairsList = data.active_pairs || (data.pair ? [data] : []);
 
@@ -359,107 +359,87 @@ async function loadShannon(pair = "ALL") {
       const isRebalance = p.action_required;
       const drift = p.drift_pct !== undefined ? p.drift_pct : 0.0;
       const stats = p.historical_stats || {};
-      const sparkHtml = generateRatioSparkline(p.ratio_history || [], p.pair, 280, 48);
+      const sparkHtml = generateRatioSparkline(p.ratio_history || [], p.pair, 110, 26);
       const ratioChg = p.ratio_24h_change_pct !== undefined ? p.ratio_24h_change_pct : 0.0;
+      const isRatioUp = ratioChg >= 0;
 
       html += `
-        <div class="bg-solana-dark border ${isRebalance ? 'border-amber-500/50 shadow-lg shadow-amber-500/5' : 'border-solana-border'} rounded-2xl p-5 flex flex-col justify-between hover:border-amber-400/50 transition">
-          <div>
-            <!-- Header -->
-            <div class="flex items-center justify-between pb-3 border-b border-solana-border/50">
-              <div class="flex items-center gap-2">
-                <span class="font-bold text-white text-base">${p.pair}</span>
-                <span class="text-[10px] font-mono px-2 py-0.5 rounded ${isRebalance ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse font-bold' : 'bg-solana-card text-gray-400 border border-solana-border'}">
-                  ${isRebalance ? 'REBALANCE DUE' : 'BALANCED'}
-                </span>
-              </div>
-              <span class="text-xs font-mono font-bold ${isRebalance ? 'text-amber-400' : 'text-solana-green'}">
-                Drift: ${isRebalance ? '+' : ''}${drift}%
-              </span>
-            </div>
+        <tr class="hover:bg-solana-dark/40 transition">
+          <!-- 1. Pair -->
+          <td class="py-3 px-3 font-bold text-white whitespace-nowrap">
+            <span class="text-sm">${p.pair}</span>
+          </td>
 
-            <!-- Allocation Bars -->
-            <div class="mt-4 space-y-3">
-              <div>
-                <div class="flex justify-between text-xs font-mono mb-1">
-                  <span class="text-solana-green font-bold">${tokenA}: ${weightA}%</span>
-                  <span class="text-gray-400">Target: 50.0%</span>
-                </div>
-                <div class="w-full bg-gray-800 rounded-full h-2.5">
-                  <div class="bg-solana-green h-2.5 rounded-full transition-all duration-500" style="width: ${weightA}%"></div>
-                </div>
-              </div>
-
-              <div>
-                <div class="flex justify-between text-xs font-mono mb-1">
-                  <span class="text-solana-purple font-bold">${tokenB}: ${weightB}%</span>
-                  <span class="text-gray-400">Target: 50.0%</span>
-                </div>
-                <div class="w-full bg-gray-800 rounded-full h-2.5">
-                  <div class="bg-solana-purple h-2.5 rounded-full transition-all duration-500" style="width: ${weightB}%"></div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Recommended Action Box -->
-            <div class="mt-4 p-3 rounded-xl ${isRebalance ? 'bg-amber-500/10 border-amber-500/30 text-amber-300' : 'bg-solana-green/10 border-solana-green/30 text-solana-green'} border text-xs font-mono leading-relaxed">
-              <span class="font-bold mr-1">${isRebalance ? '⚠️' : '✅'}</span> ${p.recommended_swap}
-            </div>
-
-            <!-- Stats Grid -->
-            <div class="grid grid-cols-3 gap-2 mt-4 text-[11px] font-mono">
-              <div class="bg-solana-card/60 p-2 rounded-lg border border-solana-border text-center">
-                <div class="text-gray-400 text-[10px]">Cycles</div>
-                <div class="font-bold text-white mt-0.5">${stats.total_cycles_completed || '-'}</div>
-              </div>
-              <div class="bg-solana-card/60 p-2 rounded-lg border border-solana-border text-center">
-                <div class="text-gray-400 text-[10px]">Alpha</div>
-                <div class="font-bold text-solana-green mt-0.5">+${stats.cumulative_harvested_alpha_pct || 0}%</div>
-              </div>
-              <div class="bg-solana-card/60 p-2 rounded-lg border border-solana-border text-center">
-                <div class="text-gray-400 text-[10px]">Vol (σ)</div>
-                <div class="font-bold text-amber-400 mt-0.5">${stats.annualized_volatility || '-'}</div>
-              </div>
-            </div>
-
-            <!-- 24h SOL/Token Relative Ratio Mini Chart Box -->
-            <div class="mt-4 bg-solana-card/60 border border-solana-border rounded-xl p-3">
-              <div class="flex items-center justify-between text-[11px] font-mono mb-1.5">
-                <div class="flex items-center gap-1.5">
-                  <span class="text-gray-400 font-bold">24h Relative Ratio:</span>
-                  <span class="text-white font-bold">${tokenB === 'USDC' ? '$' + formatRatio(p.current_ratio) : formatRatio(p.current_ratio) + ' SOL'}</span>
-                </div>
-                <span class="px-2 py-0.5 rounded text-[10px] font-bold ${ratioChg >= 0 ? 'bg-solana-green/20 text-solana-green border border-solana-green/30' : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'}">
-                  ${ratioChg >= 0 ? '+' : ''}${ratioChg.toFixed(2)}% vs SOL
-                </span>
-              </div>
-
-              <div class="w-full h-12 py-1">
+          <!-- 2. 4H Trend Curve (vs SOL) -->
+          <td class="py-3 px-3">
+            <div class="flex items-center gap-2">
+              <div class="w-28 h-7">
                 ${sparkHtml}
               </div>
-
-              <div class="flex items-center justify-between text-[10px] text-gray-500 font-mono mt-1 pt-1.5 border-t border-solana-border/40">
-                <span>24h Low: ${formatRatio(p.ratio_24h_min || 0)}</span>
-                <span class="text-gray-300 font-bold">${tokenB === 'USDC' ? 'SOL Spot: $' + formatRatio(p.current_ratio) : '1 SOL = ' + (p.token_per_sol ? p.token_per_sol.toLocaleString() : '-') + ' ' + tokenB}</span>
-                <span>24h High: ${formatRatio(p.ratio_24h_max || 0)}</span>
-              </div>
+              <span class="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${isRatioUp ? 'bg-solana-green/20 text-solana-green border border-solana-green/30' : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'}">
+                ${isRatioUp ? '+' : ''}${ratioChg.toFixed(1)}%
+              </span>
             </div>
-          </div>
+          </td>
 
-          <!-- Dual Action Buttons -->
-          <div class="flex items-center gap-2 mt-5 pt-3 border-t border-solana-border/50">
-            <button onclick="triggerSimulateSwap('${tokenA}', '${tokenB}', 1.0)" class="flex-1 py-2 bg-solana-card hover:bg-solana-border text-amber-400 border border-amber-500/30 rounded-xl text-xs font-bold transition">
-              Simulate
-            </button>
-            <a href="https://jup.ag/swap/${tokenA}-${tokenB}" target="_blank" rel="noopener noreferrer" class="px-3.5 py-2 bg-solana-purple/20 text-solana-purple hover:bg-solana-purple/30 border border-solana-purple/30 rounded-xl text-xs font-bold transition flex items-center gap-1">
-              Trade on Jup ↗
-            </a>
-          </div>
-        </div>
+          <!-- 3. Exchange Rate -->
+          <td class="py-3 px-3 font-mono text-xs whitespace-nowrap">
+            <div class="font-bold text-white">
+              ${tokenB === 'USDC' ? '$' + formatRatio(p.current_ratio) : formatRatio(p.current_ratio) + ' SOL'}
+            </div>
+            <div class="text-[10px] text-gray-400">
+              ${tokenB === 'USDC' ? 'SOL Spot' : '1 SOL = ' + (p.token_per_sol ? p.token_per_sol.toLocaleString() : '-') + ' ' + tokenB}
+            </div>
+          </td>
+
+          <!-- 4. Balance (50/50 Dual Bar) -->
+          <td class="py-3 px-3 min-w-[140px]">
+            <div class="flex justify-between text-[10px] font-mono mb-1">
+              <span class="text-solana-green font-bold">SOL: ${weightA}%</span>
+              <span class="text-solana-purple font-bold">${tokenB}: ${weightB}%</span>
+            </div>
+            <div class="w-full bg-gray-800 rounded-full h-2 flex overflow-hidden">
+              <div class="bg-solana-green h-2 transition-all duration-500" style="width: ${weightA}%"></div>
+              <div class="bg-solana-purple h-2 transition-all duration-500" style="width: ${weightB}%"></div>
+            </div>
+          </td>
+
+          <!-- 5. Drift -->
+          <td class="py-3 px-3 whitespace-nowrap font-mono">
+            <span class="px-2 py-0.5 rounded text-[10px] font-bold ${isRebalance ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse' : 'bg-solana-green/10 text-solana-green border border-solana-green/30'}">
+              ${isRebalance ? 'DRIFT: +' + drift + '%' : 'BALANCED (' + drift + '%)'}
+            </span>
+          </td>
+
+          <!-- 6. Rebalance Action -->
+          <td class="py-3 px-3 text-xs font-mono max-w-xs">
+            <span class="${isRebalance ? 'text-amber-300 font-bold' : 'text-gray-400'}">
+              ${isRebalance ? '⚠️ ' + p.recommended_swap : '✅ In 50/50 Optimal Band'}
+            </span>
+          </td>
+
+          <!-- 7. Alpha / Vol -->
+          <td class="py-3 px-3 font-mono text-xs whitespace-nowrap">
+            <div class="font-bold text-solana-green">+${stats.cumulative_harvested_alpha_pct || 0}% Alpha</div>
+            <div class="text-[10px] text-gray-400">${stats.total_cycles_completed || 0} cycles • ${stats.annualized_volatility || '-'} σ</div>
+          </td>
+
+          <!-- 8. Execution -->
+          <td class="py-3 px-3 text-right whitespace-nowrap">
+            <div class="flex items-center justify-end gap-1.5">
+              <button onclick="triggerSimulateSwap('${tokenA}', '${tokenB}', 1.0)" class="px-2.5 py-1 bg-solana-card hover:bg-solana-border text-amber-400 border border-amber-500/30 rounded text-xs font-bold transition">
+                Simulate
+              </button>
+              <a href="https://jup.ag/swap/${tokenA}-${tokenB}" target="_blank" rel="noopener noreferrer" class="px-2.5 py-1 bg-solana-purple/20 text-solana-purple hover:bg-solana-purple/30 border border-solana-purple/30 rounded text-xs font-bold transition flex items-center gap-1">
+                Trade ↗
+              </a>
+            </div>
+          </td>
+        </tr>
       `;
     });
 
-    container.innerHTML = html;
+    tbody.innerHTML = html;
   } catch (err) {
     console.error('Error loading Shannon data:', err);
   }

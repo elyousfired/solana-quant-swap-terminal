@@ -199,13 +199,13 @@ BINANCE_SYMBOLS = {
 CANDLE_CACHE = {}
 CACHE_TTL = 120  # 2 minutes cache to avoid rate limits
 
-def get_24h_candles(sym: str) -> list[float]:
+def get_4h_candles(sym: str) -> list[float]:
     now = time.time()
     if sym in CANDLE_CACHE and (now - CANDLE_CACHE[sym]["ts"]) < CACHE_TTL:
         return CANDLE_CACHE[sym]["closes"]
     try:
         bsym = BINANCE_SYMBOLS.get(sym, f"{sym}USDT")
-        url = f"https://api.binance.com/api/v3/klines?symbol={bsym}&interval=1h&limit=24"
+        url = f"https://api.binance.com/api/v3/klines?symbol={bsym}&interval=4h&limit=30"
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
         raw = json.loads(urllib.request.urlopen(req, timeout=3).read())
         closes = [float(c[4]) for c in raw]
@@ -223,8 +223,8 @@ BASE_PAIR_RATIOS = {
     "KMNO/SOL": 0.000375, "MET/SOL": 0.00288, "PUMP/SOL": 0.000041
 }
 
-def generate_ou_ratio_series(current_ratio: float, h24_chg_pct: float, volatility_pct: float = 2.0, points: int = 24):
-    """Generates a Brownian bridge series matching exact live ratio and 24h drift."""
+def generate_ou_ratio_series(current_ratio: float, h24_chg_pct: float, volatility_pct: float = 2.0, points: int = 30):
+    """Generates a Brownian bridge series matching exact live ratio and 4H multi-day trend."""
     start_ratio = current_ratio / (1.0 + (h24_chg_pct / 100.0)) if h24_chg_pct != -100.0 else current_ratio
     t = np.linspace(0, 1, points)
     drift = start_ratio + t * (current_ratio - start_ratio)
@@ -238,11 +238,11 @@ def generate_ou_ratio_series(current_ratio: float, h24_chg_pct: float, volatilit
 
 def compute_ratio_series(token_a: str, token_b: str, live_p_a: float, live_p_b: float):
     """
-    Computes 24h ratio time series (Token B / Token A, e.g. JUP/SOL or SOL/USDC).
-    Returns list of 24 points, 24h percentage change vs SOL, mean, min, and max.
+    Computes 4H ratio time series (Token B / Token A, e.g. JUP/SOL or SOL/USDC).
+    Returns list of 30 points (4h resolution), timeframe change vs SOL, mean, min, and max.
     """
     if token_b == "USDC":
-        closes_a = get_24h_candles(token_a)
+        closes_a = get_4h_candles(token_a)
         if closes_a and len(closes_a) >= 20:
             ratios = list(closes_a)
             ratios[-1] = live_p_a
@@ -251,12 +251,12 @@ def compute_ratio_series(token_a: str, token_b: str, live_p_a: float, live_p_b: 
         
         # Resilient Brownian bridge for SOL/USDC
         sol_price = live_p_a if live_p_a > 0 else 95.0
-        chg_pct = -1.25
-        series = generate_ou_ratio_series(sol_price, chg_pct, volatility_pct=1.8)
+        chg_pct = -2.15
+        series = generate_ou_ratio_series(sol_price, chg_pct, volatility_pct=2.0, points=30)
         return series, chg_pct, round(float(np.mean(series)), 2), round(min(series), 2), round(max(series), 2)
 
-    closes_sol = get_24h_candles("SOL")
-    closes_tok = get_24h_candles(token_b)
+    closes_sol = get_4h_candles("SOL")
+    closes_tok = get_4h_candles(token_b)
 
     if closes_sol and closes_tok and len(closes_sol) == len(closes_tok) and len(closes_sol) >= 20:
         ratios = [t / s for t, s in zip(closes_tok, closes_sol)]
@@ -269,13 +269,12 @@ def compute_ratio_series(token_a: str, token_b: str, live_p_a: float, live_p_b: 
     current_r = (live_p_b / live_p_a) if live_p_a > 0 else 0.00262
     pair_k = f"{token_a}/{token_b}"
     base_r = BASE_PAIR_RATIOS.get(pair_k, current_r)
-    drift_pct = ((current_r - base_r) / base_r) * 100.0 if base_r > 0 else 1.2
-    # Ensure drift is noticeable and within realistic range
-    drift_pct = max(-6.0, min(6.0, drift_pct))
+    drift_pct = ((current_r - base_r) / base_r) * 100.0 if base_r > 0 else 1.8
+    drift_pct = max(-8.0, min(8.0, drift_pct))
     if abs(drift_pct) < 0.2:
-        drift_pct = 1.15
+        drift_pct = 1.45
         
-    series = generate_ou_ratio_series(current_r, drift_pct, volatility_pct=2.4)
+    series = generate_ou_ratio_series(current_r, drift_pct, volatility_pct=2.8, points=30)
     chg = round(((series[-1] - series[0]) / series[0]) * 100.0, 2)
     return series, chg, round(float(np.mean(series)), 8), round(min(series), 8), round(max(series), 8)
 

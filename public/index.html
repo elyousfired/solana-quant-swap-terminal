@@ -203,7 +203,7 @@
               <tr class="text-gray-400 border-b border-solana-border pb-2 uppercase tracking-wider">
                 <th class="py-3 px-4">Pair</th>
                 <th class="py-3 px-4">Current Ratio</th>
-                <th class="py-3 px-4">24h SOL Ratio Trend</th>
+                <th class="py-3 px-4">4H Trend (vs SOL)</th>
                 <th class="py-3 px-4">Z-Score Divergence</th>
                 <th class="py-3 px-4">OU Half-Life (t1/2)</th>
                 <th class="py-3 px-4">Signal</th>
@@ -278,8 +278,25 @@
           </div>
         </div>
 
-        <div id="shannon-dashboard" class="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          <!-- Populated by JS: All 7 pairs rendered at once! -->
+        <!-- SHANNON 50/50 MASTER TABLE (ALL 7 PAIRS AT A GLANCE - ZERO SCROLL) -->
+        <div class="overflow-x-auto mt-6">
+          <table class="w-full text-left text-xs font-mono">
+            <thead>
+              <tr class="text-gray-400 border-b border-solana-border pb-2 uppercase tracking-wider text-[11px]">
+                <th class="py-3 px-3">Pair</th>
+                <th class="py-3 px-3">4H Trend (vs SOL)</th>
+                <th class="py-3 px-3">Exchange Rate</th>
+                <th class="py-3 px-3 min-w-[140px]">Balance (50/50 Target)</th>
+                <th class="py-3 px-3">Drift</th>
+                <th class="py-3 px-3">Rebalance Action</th>
+                <th class="py-3 px-3">Alpha / Vol</th>
+                <th class="py-3 px-3 text-right">Execution</th>
+              </tr>
+            </thead>
+            <tbody id="shannon-table-body" class="divide-y divide-solana-border">
+              <!-- Populated by JS: All 7 pairs rendered in 1 single view -->
+            </tbody>
+          </table>
         </div>
       </div>
     </section>
