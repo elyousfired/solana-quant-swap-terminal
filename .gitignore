@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# Vercel
+.vercel
+
+# Node
+node_modules/
+
+# Local logs & test artifacts
+*.log
+*.png
+!shannon_matrix_preview.png
+backtest_results.json
+intraday_summary.json
+
+# OS files
+.DS_Store
+Thumbs.db

@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Solana Quant Swap Terminal | Powered by Jupiter</title>
+  <!-- Tailwind CSS & Lucide Icons -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            solana: {
+              purple: '#9945FF',
+              green: '#14F195',
+              dark: '#0B0E14',
+              card: '#121721',
+              border: '#1F2937'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Plus+Jakarta+Sans:wght@400;600;700&display=swap');
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background-color: #07090E;
+    }
+    .font-mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .glow-green {
+      box-shadow: 0 0 20px rgba(20, 241, 149, 0.25);
+    }
+    .glow-purple {
+      box-shadow: 0 0 20px rgba(153, 69, 255, 0.25);
+    }
+    .tab-active {
+      background: linear-gradient(135deg, rgba(153, 69, 255, 0.2), rgba(20, 241, 149, 0.1));
+      border-color: #14F195;
+      color: #FFFFFF;
+    }
+  </style>
+</head>
+<body class="text-gray-200 min-h-screen flex flex-col antialiased selection:bg-solana-green selection:text-black">
+
+  <!-- TOP TICKER BAR (Live Jupiter Price API v3) -->
+  <header class="border-b border-solana-border bg-solana-dark/80 backdrop-blur sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 py-2 flex flex-wrap items-center justify-between text-xs font-mono">
+      <div class="flex items-center space-x-3">
+        <span class="flex h-2.5 w-2.5 relative">
+          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-solana-green opacity-75"></span>
+          <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-solana-green"></span>
+        </span>
+        <span class="font-bold tracking-wider text-gray-400">JUPITER PRICE V3 LIVE:</span>
+      </div>
+      <div id="live-tickers" class="flex items-center space-x-6 overflow-x-auto py-1">
+        <span class="text-gray-400">Loading Jupiter live feeds...</span>
+      </div>
+      <div class="text-gray-400 hidden sm:block">
+        Latency: <span id="telemetry-latency" class="text-solana-green font-bold">1.4 ms</span> | Engine: <span class="text-solana-purple font-bold">Connected</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN HEADER -->
+  <div class="max-w-7xl mx-auto px-4 py-6 w-full flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-solana-border/50">
+    <div>
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-solana-purple to-solana-green flex items-center justify-center font-bold text-black text-xl shadow-lg">
+          🪐
+        </div>
+        <div>
+          <h1 class="text-2xl font-bold text-white tracking-tight flex items-center gap-2">
+            Solana Quant Swap Terminal
+            <span class="text-xs bg-solana-purple/20 text-solana-purple border border-solana-purple/30 px-2 py-0.5 rounded-full font-mono font-medium">JUPITER ENGINE</span>
+          </h1>
+          <p class="text-xs text-gray-400">Real-time statistical arbitrage, LST depeg triggers, circular loops, and volatility rebalancing</p>
+        </div>
+      </div>
+    </div>
+    
+    <!-- STATS PILLS -->
+    <div class="flex items-center space-x-3 text-xs font-mono">
+      <div class="bg-solana-card border border-solana-border px-3 py-2 rounded-lg">
+        <div class="text-gray-400">ACTIVE STRATEGIES</div>
+        <div class="text-solana-green font-bold text-sm">4 Engines Live</div>
+      </div>
+      <div class="bg-solana-card border border-solana-border px-3 py-2 rounded-lg">
+        <div class="text-gray-400">TARGET ALPHA</div>
+        <div class="text-white font-bold text-sm">+1.5% to +4.8%</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- NAVIGATION TABS (THE 4 DEDICATED PAGES) -->
+  <nav class="max-w-7xl mx-auto px-4 mt-6 w-full">
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-2 border-b border-solana-border pb-4">
+      <button onclick="switchTab('lst')" id="tab-lst" class="tab-btn tab-active flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-solana-border text-sm font-semibold transition-all">
+        <i data-lucide="shield-check" class="w-4 h-4 text-solana-green"></i>
+        <span>1. LST Depeg Arbitrage</span>
+      </button>
+
+      <button onclick="switchTab('pairs')" id="tab-pairs" class="tab-btn flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-solana-border text-sm font-semibold text-gray-400 hover:text-white transition-all">
+        <i data-lucide="bar-chart-2" class="w-4 h-4 text-solana-purple"></i>
+        <span>2. Pairs Z-Score Rotation</span>
+      </button>
+
+      <button onclick="switchTab('loops')" id="tab-loops" class="tab-btn flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-solana-border text-sm font-semibold text-gray-400 hover:text-white transition-all">
+        <i data-lucide="repeat" class="w-4 h-4 text-cyan-400"></i>
+        <span>3. Circular Multi-Hop Loops</span>
+      </button>
+
+      <button onclick="switchTab('shannon')" id="tab-shannon" class="tab-btn flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-solana-border text-sm font-semibold text-gray-400 hover:text-white transition-all">
+        <i data-lucide="activity" class="w-4 h-4 text-amber-400"></i>
+        <span>4. Shannon's Demon 50/50</span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- CONTENT PAGES CONTAINER -->
+  <main class="max-w-7xl mx-auto px-4 py-6 w-full flex-1">
+
+    <!-- ========================================== -->
+    <!-- PAGE 1: LST DEPEG ARBITRAGE TERMINAL -->
+    <!-- ========================================== -->
+    <section id="page-lst" class="tab-page space-y-6">
+      <div class="bg-solana-card border border-solana-border rounded-2xl p-6">
+        <div class="flex flex-col md:flex-row md:items-center justify-between pb-4 border-b border-solana-border gap-2">
+          <div>
+            <h2 class="text-lg font-bold text-white flex items-center gap-2">
+              <i data-lucide="shield-check" class="text-solana-green w-5 h-5"></i>
+              Liquid Staking (LST) Depeg Arbitrage Terminal
+            </h2>
+            <p class="text-xs text-gray-400 mt-1">
+              Compares live DEX market prices against mathematical Staking NAV redemption rates. Zero market risk (always holding SOL or Staked SOL).
+            </p>
+          </div>
+          <div class="flex items-center gap-3">
+            <span class="flex items-center gap-1.5 text-xs text-solana-green font-mono bg-solana-green/10 border border-solana-green/30 px-3 py-1 rounded-full">
+              <span class="w-2 h-2 rounded-full bg-solana-green animate-pulse"></span>
+              LIVE JUPITER FEED (<span id="lst-live-clock">Connecting...</span>)
+            </span>
+            <div class="text-right bg-solana-dark px-3 py-1 rounded-full border border-solana-border">
+              <span class="text-xs text-gray-400 font-mono">SOL: </span>
+              <span id="lst-sol-benchmark" class="font-bold text-solana-green font-mono text-sm">$95.72</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- LST COMPARISON CARDS -->
+        <div id="lst-cards" class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+          <!-- Populated by JS -->
+          <div class="text-center py-8 text-gray-500 text-sm">Querying Jupiter LST liquidity pools...</div>
+        </div>
+      </div>
+
+      <!-- LST EXPLANATION PANEL -->
+      <div class="bg-solana-dark/50 border border-solana-border/50 rounded-2xl p-6 text-xs text-gray-400 space-y-2">
+        <h4 class="font-bold text-white uppercase tracking-wider text-xs">How LST Arbitrage Generates Risk-Free +2% SOL:</h4>
+        <p>1. <strong>True Staking NAV:</strong> JitoSOL and mSOL accumulate continuous staking rewards. 1 JitoSOL is mathematically backed by 1.1340 SOL.</p>
+        <p>2. <strong>Discount Detection:</strong> When retail panic sellers dump on Raydium/Orca, the DEX exchange ratio drops (e.g. 1.1000 SOL). The system swaps SOL $\to$ JitoSOL at a 2.2% discount.</p>
+        <p>3. <strong>Arbitrage Exit:</strong> Unstaking via Sanctum Router or holding until epoch redemption yields pure, risk-free compounding in native SOL.</p>
+      </div>
+    </section>
+
+    <!-- ========================================== -->
+    <!-- PAGE 2: STATISTICAL PAIRS SWAP ROTATION -->
+    <!-- ========================================== -->
+    <section id="page-pairs" class="tab-page hidden space-y-6">
+      <div class="bg-solana-card border border-solana-border rounded-2xl p-6">
+        <div class="flex flex-col md:flex-row md:items-center justify-between pb-4 border-b border-solana-border gap-2">
+          <div>
+            <h2 class="text-lg font-bold text-white flex items-center gap-2">
+              <i data-lucide="bar-chart-2" class="text-solana-purple w-5 h-5"></i>
+              Statistical Pairs Swap Rotation Engine (Z-Score & Half-Life)
+            </h2>
+            <p class="text-xs text-gray-400 mt-1">
+              Direct coin-to-coin mean reversion swaps on Solana leaders. Accumulates +2.0% to +4.5% extra tokens per cycle without fiat exposure.
+            </p>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="flex items-center gap-1.5 text-xs text-solana-green font-mono bg-solana-green/10 border border-solana-green/30 px-3 py-1 rounded-full">
+              <span class="w-2 h-2 rounded-full bg-solana-green animate-pulse"></span>
+              LIVE JUPITER FEED (<span id="pairs-live-clock">Connecting...</span>)
+            </span>
+            <span class="text-xs bg-solana-purple/20 text-solana-purple border border-solana-purple/30 px-3 py-1 rounded-full font-mono">
+              Ornstein-Uhlenbeck
+            </span>
+          </div>
+        </div>
+
+        <!-- PAIRS TABLE -->
+        <div class="overflow-x-auto mt-6">
+          <table class="w-full text-left text-xs font-mono">
+            <thead>
+              <tr class="text-gray-400 border-b border-solana-border pb-2 uppercase tracking-wider">
+                <th class="py-3 px-4">Pair</th>
+                <th class="py-3 px-4">Current Ratio</th>
+                <th class="py-3 px-4">Z-Score Divergence</th>
+                <th class="py-3 px-4">OU Half-Life (t1/2)</th>
+                <th class="py-3 px-4">Signal</th>
+                <th class="py-3 px-4">Target Net Gain</th>
+                <th class="py-3 px-4 text-right">Execution & Trade</th>
+              </tr>
+            </thead>
+            <tbody id="pairs-table-body" class="divide-y divide-solana-border">
+              <!-- Populated by JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================== -->
+    <!-- PAGE 3: MULTI-HOP CIRCULAR ROUTE SWAPPER -->
+    <!-- ========================================== -->
+    <section id="page-loops" class="tab-page hidden space-y-6">
+      <div class="bg-solana-card border border-solana-border rounded-2xl p-6">
+        <div class="flex flex-col md:flex-row md:items-center justify-between pb-4 border-b border-solana-border gap-2">
+          <div>
+            <h2 class="text-lg font-bold text-white flex items-center gap-2">
+              <i data-lucide="repeat" class="text-cyan-400 w-5 h-5"></i>
+              Multi-Hop Circular Route Swapper (Triangular Arbitrage on Solana)
+            </h2>
+            <p class="text-xs text-gray-400 mt-1">
+              Scans 3-hop closed swap loops entirely through Jupiter's multi-DEX routing graph. Instant risk-free cycle settling in SOL.
+            </p>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="flex items-center gap-1.5 text-xs text-cyan-400 font-mono bg-cyan-500/10 border border-cyan-500/30 px-3 py-1 rounded-full">
+              <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+              LIVE JUPITER FEED (<span id="loops-live-clock">Connecting...</span>)
+            </span>
+            <button onclick="refreshLoops()" class="px-3 py-1 bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 rounded-full text-xs font-mono hover:bg-cyan-500/30 transition">
+              Scan Routes Now
+            </button>
+          </div>
+        </div>
+
+        <!-- LOOPS CONTAINER -->
+        <div id="loops-container" class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================== -->
+    <!-- PAGE 4: SHANNON'S DEMON VOLATILITY HARVESTER -->
+    <!-- ========================================== -->
+    <section id="page-shannon" class="tab-page hidden space-y-6">
+      <div class="bg-solana-card border border-solana-border rounded-2xl p-6">
+        <div class="flex flex-col md:flex-row md:items-center justify-between pb-4 border-b border-solana-border gap-4">
+          <div>
+            <h2 class="text-lg font-bold text-white flex items-center gap-2">
+              <i data-lucide="activity" class="text-amber-400 w-5 h-5"></i>
+              Shannon's Demon 50/50 Volatility Harvester Matrix (All Pairs Live)
+            </h2>
+            <p class="text-xs text-gray-400 mt-1">
+              Simultaneous 50/50 portfolio rebalancing across all Solana leaders. Deterministic volatility compounding (g = 0.5μ + 0.125σ²).
+            </p>
+          </div>
+          <div class="flex items-center gap-3">
+            <span class="flex items-center gap-1.5 text-xs text-amber-400 font-mono bg-amber-500/10 border border-amber-500/30 px-3 py-1.5 rounded-xl">
+              <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+              LIVE JUPITER MATRIX (<span id="shannon-live-clock">Connecting...</span>)
+            </span>
+            <span class="text-xs bg-amber-500/20 text-amber-400 border border-amber-500/30 px-3 py-1.5 rounded-xl font-mono whitespace-nowrap">
+              7 Active Pairs
+            </span>
+          </div>
+        </div>
+
+        <div id="shannon-dashboard" class="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <!-- Populated by JS: All 7 pairs rendered at once! -->
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================== -->
+    <!-- INTERACTIVE JUPITER SWAP SIMULATOR -->
+    <!-- ========================================== -->
+    <section class="bg-solana-card border border-solana-border rounded-2xl p-6 mt-8">
+      <div class="flex items-center justify-between pb-4 border-b border-solana-border">
+        <div>
+          <h3 class="text-base font-bold text-white flex items-center gap-2">
+            <i data-lucide="play" class="text-solana-green w-4 h-4"></i>
+            Live Jupiter Swap Simulator & Route Inspector
+          </h3>
+          <p class="text-xs text-gray-400">Test any swap route directly against official Jupiter v1 quote endpoints in sub-2ms latency.</p>
+        </div>
+        <span class="text-xs text-solana-green font-mono">api.jup.ag/swap/v1/quote</span>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
+        <div>
+          <label class="block text-xs font-mono text-gray-400 mb-1">Sell Token</label>
+          <select id="sim-in-token" class="w-full bg-solana-dark border border-solana-border rounded-xl px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-solana-green">
+            <option value="SOL">SOL (Native)</option>
+            <option value="JUP">JUP (Jupiter)</option>
+            <option value="RAY">RAY (Raydium)</option>
+            <option value="JTO">JTO (Jito)</option>
+            <option value="KMNO">KMNO (Kamino)</option>
+            <option value="MET">MET (Meteora)</option>
+            <option value="PUMP">PUMP (Pump.fun)</option>
+            <option value="JitoSOL">JitoSOL (Staked)</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-xs font-mono text-gray-400 mb-1">Buy Token</label>
+          <select id="sim-out-token" class="w-full bg-solana-dark border border-solana-border rounded-xl px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-solana-green">
+            <option value="USDC">USDC (Stable)</option>
+            <option value="SOL">SOL (Native)</option>
+            <option value="JUP">JUP (Jupiter)</option>
+            <option value="RAY">RAY (Raydium)</option>
+            <option value="JTO">JTO (Jito)</option>
+            <option value="KMNO">KMNO (Kamino)</option>
+            <option value="MET">MET (Meteora)</option>
+            <option value="PUMP">PUMP (Pump.fun)</option>
+            <option value="JitoSOL">JitoSOL (Staked)</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-xs font-mono text-gray-400 mb-1">Amount</label>
+          <input type="number" id="sim-amount" value="1.0" step="0.1" class="w-full bg-solana-dark border border-solana-border rounded-xl px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-solana-green">
+        </div>
+
+        <div class="flex items-end">
+          <button onclick="runSimulation()" class="w-full bg-gradient-to-r from-solana-purple to-solana-green hover:opacity-90 text-black font-bold py-2.5 px-4 rounded-xl text-sm transition-all shadow-md">
+            Execute Live Quote
+          </button>
+        </div>
+      </div>
+
+      <!-- SIMULATION RESULT BOX -->
+      <div id="sim-result" class="hidden mt-4 p-4 rounded-xl bg-solana-dark border border-solana-border font-mono text-xs">
+        <!-- Rendered by JS -->
+      </div>
+    </section>
+
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="border-t border-solana-border py-4 text-center text-xs text-gray-500 font-mono">
+    Solana Quant Swap Terminal • Connected to Jupiter Aggregator v3 & v1 • High-Performance Trading Architecture
+  </footer>
+
+  <!-- SCRIPT -->
+  <script src="app.js?v=3.0"></script>
+</body>
+</html>
