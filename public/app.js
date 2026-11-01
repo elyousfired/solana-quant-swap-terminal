@@ -22,16 +22,27 @@ function switchTab(tabId) {
     page.classList.add('hidden');
   });
   
-  const activePage = document.getElementById(`page-${tabId}`);
+  // Route both 'pairs' and 'shannon' to unified page-pairs container
+  const targetPageId = (tabId === 'pairs' || tabId === 'shannon') ? 'page-pairs' : `page-${tabId}`;
+  const activePage = document.getElementById(targetPageId);
   if (activePage) {
     activePage.classList.remove('hidden');
   }
 
   // Refresh data for active tab
   if (tabId === 'lst') loadLstDepeg();
-  if (tabId === 'pairs') loadPairsRotation();
   if (tabId === 'loops') loadLoops();
-  if (tabId === 'shannon') loadShannon();
+  if (tabId === 'pairs' || tabId === 'shannon') {
+    loadShannon();
+    loadPairsRotation();
+    if (tabId === 'shannon') {
+      const el = document.getElementById('card-shannon');
+      if (el) el.scrollIntoView({ behavior: 'smooth' });
+    } else if (tabId === 'pairs') {
+      const el = document.getElementById('card-pairs');
+      if (el) el.scrollIntoView({ behavior: 'smooth' });
+    }
+  }
 }
 
 // 1. Live Tickers Bar
@@ -218,37 +229,84 @@ async function loadPairsRotation() {
       const outToken = p.z_score <= -2.0 ? p.base_token : p.quote_token;
       const jupSwapUrl = `https://jup.ag/swap/${inToken}-${outToken}`;
 
-      const sparkHtml = generateRatioSparkline(p.ratio_history || [], p.pair, 100, 26);
+      const sparkHtml = generateRatioSparkline(p.ratio_history || [], p.pair, 110, 26);
       const rChg = p.ratio_24h_change_pct !== undefined ? p.ratio_24h_change_pct : 0.0;
+      const isRatioUp = rChg >= 0;
+
+      // Human-readable clear signal badge matching exact quantitative logic
+      let signalBadge = '';
+      if (p.z_score >= 2.0) {
+        signalBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-solana-purple/20 text-solana-purple border border-solana-purple/30">SWAP ${p.base_token} ➔ SOL</span>`;
+      } else if (p.z_score <= -2.0) {
+        signalBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-solana-green/20 text-solana-green border border-solana-green/30">SWAP SOL ➔ ${p.base_token}</span>`;
+      } else {
+        signalBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-medium bg-gray-800 text-gray-400 border border-gray-700">NEUTRAL (HOLD)</span>`;
+      }
+
+      // Target net gain badge (clear explanation of Neutral zone instead of confusing -)
+      let yieldBadge = '';
+      if (p.target_yield_pct > 0) {
+        yieldBadge = `<span class="font-bold text-solana-green">+${p.target_yield_pct.toFixed(2)}%</span>`;
+      } else {
+        yieldBadge = `<span class="text-gray-500 font-mono text-[11px]" title="Z-Score is within ±2.0σ normal band. Entry trigger requires |Z| ≥ 2.0σ.">In Band (0.0%)</span>`;
+      }
 
       html += `
         <tr class="hover:bg-solana-dark/40 transition">
-          <td class="py-3 px-4 font-bold text-white">${p.pair}</td>
-          <td class="py-3 px-4 text-gray-300 font-mono">${formatRatio(p.current_ratio)}</td>
-          <td class="py-3 px-4">
+          <!-- 1. Pair (SOL / Token) -->
+          <td class="py-3 px-3 font-bold text-white whitespace-nowrap">
+            <span class="text-sm">${p.pair}</span>
+          </td>
+
+          <!-- 2. 4H Trend Curve (vs SOL) -->
+          <td class="py-3 px-3">
             <div class="flex items-center gap-2">
-              <div class="w-24 h-6">
+              <div class="w-28 h-7">
                 ${sparkHtml}
               </div>
-              <span class="text-[10px] font-mono font-bold ${rChg >= 0 ? 'text-solana-green' : 'text-amber-400'}">
-                ${rChg >= 0 ? '+' : ''}${rChg.toFixed(1)}%
+              <span class="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${isRatioUp ? 'bg-solana-green/20 text-solana-green border border-solana-green/30' : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'}">
+                ${isRatioUp ? '+' : ''}${rChg.toFixed(1)}%
               </span>
             </div>
           </td>
-          <td class="py-3 px-4 font-bold ${zColor}">${p.z_score >= 0 ? '+' : ''}${p.z_score.toFixed(2)}σ</td>
-          <td class="py-3 px-4 text-gray-400">${p.ou_half_life_hours}h</td>
-          <td class="py-3 px-4">
-            <span class="px-2 py-0.5 rounded text-[10px] ${isExtreme ? 'bg-solana-green/20 text-solana-green border border-solana-green/30 font-bold' : 'bg-gray-800 text-gray-400'}">
-              ${p.signal}
-            </span>
+
+          <!-- 3. Exchange Rate -->
+          <td class="py-3 px-3 font-mono text-xs whitespace-nowrap">
+            <div class="font-bold text-white">
+              ${formatRatio(p.current_ratio)} SOL
+            </div>
+            <div class="text-[10px] text-gray-400">
+              1 SOL = ${p.token_per_sol ? p.token_per_sol.toLocaleString() : '-'} ${p.base_token}
+            </div>
           </td>
-          <td class="py-3 px-4 font-bold text-solana-green">${p.target_yield_pct > 0 ? '+' + p.target_yield_pct.toFixed(2) + '%' : '-'}</td>
-          <td class="py-3 px-4 text-right">
-            <div class="flex items-center justify-end gap-2">
-              <button onclick="triggerSimulateSwap('${inToken}', '${outToken}', 10.0)" class="px-2.5 py-1 bg-solana-card hover:bg-solana-border text-solana-green border border-solana-green/30 rounded text-xs transition" title="Test Quote in Live Simulator">
+
+          <!-- 4. Z-Score Divergence -->
+          <td class="py-3 px-3 font-bold font-mono ${zColor}">
+            ${p.z_score >= 0 ? '+' : ''}${p.z_score.toFixed(2)}σ
+          </td>
+
+          <!-- 5. OU Half-Life -->
+          <td class="py-3 px-3 text-gray-400 font-mono">
+            ${p.ou_half_life_hours}h
+          </td>
+
+          <!-- 6. Signal -->
+          <td class="py-3 px-3">
+            ${signalBadge}
+          </td>
+
+          <!-- 7. Target Net Gain -->
+          <td class="py-3 px-3 font-mono">
+            ${yieldBadge}
+          </td>
+
+          <!-- 8. Execution & Trade -->
+          <td class="py-3 px-3 text-right whitespace-nowrap">
+            <div class="flex items-center justify-end gap-1.5">
+              <button onclick="triggerSimulateSwap('${inToken}', '${outToken}', 10.0)" class="px-2.5 py-1 bg-solana-card hover:bg-solana-border text-solana-green border border-solana-green/30 rounded text-xs font-bold transition" title="Test Quote in Live Simulator">
                 Simulate
               </button>
-              <a href="${jupSwapUrl}" target="_blank" rel="noopener noreferrer" class="px-2.5 py-1 bg-solana-purple/20 hover:bg-solana-purple/30 text-solana-purple border border-solana-purple/30 rounded text-xs transition font-bold flex items-center gap-1" title="Execute Live Swap on Jupiter DEX">
+              <a href="${jupSwapUrl}" target="_blank" rel="noopener noreferrer" class="px-2.5 py-1 bg-solana-purple/20 hover:bg-solana-purple/30 text-solana-purple border border-solana-purple/30 rounded text-xs font-bold transition flex items-center gap-1" title="Execute Live Swap on Jupiter DEX">
                 Trade on Jup ↗
               </a>
             </div>

@@ -109,7 +109,7 @@
 
       <button onclick="switchTab('pairs')" id="tab-pairs" class="tab-btn flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-solana-border text-sm font-semibold text-gray-400 hover:text-white transition-all">
         <i data-lucide="bar-chart-2" class="w-4 h-4 text-solana-purple"></i>
-        <span>2. Pairs Z-Score Rotation</span>
+        <span>2. Pairs Quant Matrix (Shannon & Z-Score)</span>
       </button>
 
       <button onclick="switchTab('loops')" id="tab-loops" class="tab-btn flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-solana-border text-sm font-semibold text-gray-400 hover:text-white transition-all">
@@ -171,97 +171,19 @@
     </section>
 
     <!-- ========================================== -->
-    <!-- PAGE 2: STATISTICAL PAIRS SWAP ROTATION -->
+    <!-- UNIFIED QUANT TERMINAL: SHANNON 50/50 & PAIRS Z-SCORE -->
     <!-- ========================================== -->
-    <section id="page-pairs" class="tab-page hidden space-y-6">
-      <div class="bg-solana-card border border-solana-border rounded-2xl p-6">
-        <div class="flex flex-col md:flex-row md:items-center justify-between pb-4 border-b border-solana-border gap-2">
-          <div>
-            <h2 class="text-lg font-bold text-white flex items-center gap-2">
-              <i data-lucide="bar-chart-2" class="text-solana-purple w-5 h-5"></i>
-              Statistical Pairs Swap Rotation Engine (Z-Score & Half-Life)
-            </h2>
-            <p class="text-xs text-gray-400 mt-1">
-              Direct coin-to-coin mean reversion swaps on Solana leaders. Accumulates +2.0% to +4.5% extra tokens per cycle without fiat exposure.
-            </p>
-          </div>
-          <div class="flex items-center gap-2">
-            <span class="flex items-center gap-1.5 text-xs text-solana-green font-mono bg-solana-green/10 border border-solana-green/30 px-3 py-1 rounded-full">
-              <span class="w-2 h-2 rounded-full bg-solana-green animate-pulse"></span>
-              LIVE JUPITER FEED (<span id="pairs-live-clock">Connecting...</span>)
-            </span>
-            <span class="text-xs bg-solana-purple/20 text-solana-purple border border-solana-purple/30 px-3 py-1 rounded-full font-mono">
-              Ornstein-Uhlenbeck
-            </span>
-          </div>
-        </div>
+    <section id="page-pairs" class="tab-page hidden space-y-8">
 
-        <!-- PAIRS TABLE -->
-        <div class="overflow-x-auto mt-6">
-          <table class="w-full text-left text-xs font-mono">
-            <thead>
-              <tr class="text-gray-400 border-b border-solana-border pb-2 uppercase tracking-wider">
-                <th class="py-3 px-4">Pair</th>
-                <th class="py-3 px-4">Current Ratio</th>
-                <th class="py-3 px-4">4H Trend (vs SOL)</th>
-                <th class="py-3 px-4">Z-Score Divergence</th>
-                <th class="py-3 px-4">OU Half-Life (t1/2)</th>
-                <th class="py-3 px-4">Signal</th>
-                <th class="py-3 px-4">Target Net Gain</th>
-                <th class="py-3 px-4 text-right">Execution & Trade</th>
-              </tr>
-            </thead>
-            <tbody id="pairs-table-body" class="divide-y divide-solana-border">
-              <!-- Populated by JS -->
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </section>
-
-    <!-- ========================================== -->
-    <!-- PAGE 3: MULTI-HOP CIRCULAR ROUTE SWAPPER -->
-    <!-- ========================================== -->
-    <section id="page-loops" class="tab-page hidden space-y-6">
-      <div class="bg-solana-card border border-solana-border rounded-2xl p-6">
-        <div class="flex flex-col md:flex-row md:items-center justify-between pb-4 border-b border-solana-border gap-2">
-          <div>
-            <h2 class="text-lg font-bold text-white flex items-center gap-2">
-              <i data-lucide="repeat" class="text-cyan-400 w-5 h-5"></i>
-              Multi-Hop Circular Route Swapper (Triangular Arbitrage on Solana)
-            </h2>
-            <p class="text-xs text-gray-400 mt-1">
-              Scans 3-hop closed swap loops entirely through Jupiter's multi-DEX routing graph. Instant risk-free cycle settling in SOL.
-            </p>
-          </div>
-          <div class="flex items-center gap-2">
-            <span class="flex items-center gap-1.5 text-xs text-cyan-400 font-mono bg-cyan-500/10 border border-cyan-500/30 px-3 py-1 rounded-full">
-              <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
-              LIVE JUPITER FEED (<span id="loops-live-clock">Connecting...</span>)
-            </span>
-            <button onclick="refreshLoops()" class="px-3 py-1 bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 rounded-full text-xs font-mono hover:bg-cyan-500/30 transition">
-              Scan Routes Now
-            </button>
-          </div>
-        </div>
-
-        <!-- LOOPS CONTAINER -->
-        <div id="loops-container" class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
-          <!-- Populated by JS -->
-        </div>
-      </div>
-    </section>
-
-    <!-- ========================================== -->
-    <!-- PAGE 4: SHANNON'S DEMON VOLATILITY HARVESTER -->
-    <!-- ========================================== -->
-    <section id="page-shannon" class="tab-page hidden space-y-6">
-      <div class="bg-solana-card border border-solana-border rounded-2xl p-6">
+      <!-- ========================================== -->
+      <!-- TABLE 1: SHANNON'S DEMON 50/50 VOLATILITY HARVESTER -->
+      <!-- ========================================== -->
+      <div id="card-shannon" class="bg-solana-card border border-solana-border rounded-2xl p-6">
         <div class="flex flex-col md:flex-row md:items-center justify-between pb-4 border-b border-solana-border gap-4">
           <div>
             <h2 class="text-lg font-bold text-white flex items-center gap-2">
               <i data-lucide="activity" class="text-amber-400 w-5 h-5"></i>
-              Shannon's Demon 50/50 Volatility Harvester Matrix (All Pairs Live)
+              Table 1: Shannon's Demon 50/50 Volatility Harvester Matrix (All Pairs Live)
             </h2>
             <p class="text-xs text-gray-400 mt-1">
               Simultaneous 50/50 portfolio rebalancing across all Solana leaders. Deterministic volatility compounding (g = 0.5μ + 0.125σ²).
@@ -297,6 +219,87 @@
               <!-- Populated by JS: All 7 pairs rendered in 1 single view -->
             </tbody>
           </table>
+        </div>
+      </div>
+
+      <!-- ========================================== -->
+      <!-- TABLE 2: STATISTICAL PAIRS SWAP ROTATION (Z-SCORE & HALF-LIFE) -->
+      <!-- ========================================== -->
+      <div id="card-pairs" class="bg-solana-card border border-solana-border rounded-2xl p-6">
+        <div class="flex flex-col md:flex-row md:items-center justify-between pb-4 border-b border-solana-border gap-2">
+          <div>
+            <h2 class="text-lg font-bold text-white flex items-center gap-2">
+              <i data-lucide="bar-chart-2" class="text-solana-purple w-5 h-5"></i>
+              Table 2: Statistical Pairs Swap Rotation Engine (Z-Score & Half-Life)
+            </h2>
+            <p class="text-xs text-gray-400 mt-1">
+              Direct coin-to-coin mean reversion swaps on Solana leaders. Accumulates +2.0% to +4.5% extra tokens per cycle without fiat exposure.
+            </p>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="flex items-center gap-1.5 text-xs text-solana-green font-mono bg-solana-green/10 border border-solana-green/30 px-3 py-1 rounded-full">
+              <span class="w-2 h-2 rounded-full bg-solana-green animate-pulse"></span>
+              LIVE JUPITER FEED (<span id="pairs-live-clock">Connecting...</span>)
+            </span>
+            <span class="text-xs bg-solana-purple/20 text-solana-purple border border-solana-purple/30 px-3 py-1 rounded-full font-mono">
+              Ornstein-Uhlenbeck
+            </span>
+          </div>
+        </div>
+
+        <!-- PAIRS TABLE (HOMOGENEOUS WITH TABLE 1) -->
+        <div class="overflow-x-auto mt-6">
+          <table class="w-full text-left text-xs font-mono">
+            <thead>
+              <tr class="text-gray-400 border-b border-solana-border pb-2 uppercase tracking-wider text-[11px]">
+                <th class="py-3 px-3">Pair</th>
+                <th class="py-3 px-3">4H Trend (vs SOL)</th>
+                <th class="py-3 px-3">Exchange Rate</th>
+                <th class="py-3 px-3">Z-Score Divergence</th>
+                <th class="py-3 px-3">OU Half-Life (t1/2)</th>
+                <th class="py-3 px-3">Signal</th>
+                <th class="py-3 px-3">Target Net Gain</th>
+                <th class="py-3 px-3 text-right">Execution & Trade</th>
+              </tr>
+            </thead>
+            <tbody id="pairs-table-body" class="divide-y divide-solana-border">
+              <!-- Populated by JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ========================================== -->
+    <!-- PAGE 3: MULTI-HOP CIRCULAR ROUTE SWAPPER -->
+    <!-- ========================================== -->
+    <section id="page-loops" class="tab-page hidden space-y-6">
+      <div class="bg-solana-card border border-solana-border rounded-2xl p-6">
+        <div class="flex flex-col md:flex-row md:items-center justify-between pb-4 border-b border-solana-border gap-2">
+          <div>
+            <h2 class="text-lg font-bold text-white flex items-center gap-2">
+              <i data-lucide="repeat" class="text-cyan-400 w-5 h-5"></i>
+              Multi-Hop Circular Route Swapper (Triangular Arbitrage on Solana)
+            </h2>
+            <p class="text-xs text-gray-400 mt-1">
+              Scans 3-hop closed swap loops entirely through Jupiter's multi-DEX routing graph. Instant risk-free cycle settling in SOL.
+            </p>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="flex items-center gap-1.5 text-xs text-cyan-400 font-mono bg-cyan-500/10 border border-cyan-500/30 px-3 py-1 rounded-full">
+              <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+              LIVE JUPITER FEED (<span id="loops-live-clock">Connecting...</span>)
+            </span>
+            <button onclick="refreshLoops()" class="px-3 py-1 bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 rounded-full text-xs font-mono hover:bg-cyan-500/30 transition">
+              Scan Routes Now
+            </button>
+          </div>
+        </div>
+
+        <!-- LOOPS CONTAINER -->
+        <div id="loops-container" class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+          <!-- Populated by JS -->
         </div>
       </div>
     </section>

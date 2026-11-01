@@ -285,12 +285,12 @@ def get_pairs_rotation():
     
     # Real-time statistical parameters calibrated against 60-day historical cointegration
     PAIRS_CONFIG = [
-        {"pair": "JUP/SOL", "base": "JUP", "quote": "SOL", "mean_ratio": 0.00262, "std_ratio": 0.000042, "ou_half_life": 16.4, "beta": 0.88},
-        {"pair": "RAY/SOL", "base": "RAY", "quote": "SOL", "mean_ratio": 0.01750, "std_ratio": 0.000185, "ou_half_life": 22.1, "beta": 1.12},
-        {"pair": "JTO/SOL", "base": "JTO", "quote": "SOL", "mean_ratio": 0.00382, "std_ratio": 0.000055, "ou_half_life": 18.2, "beta": 1.05},
-        {"pair": "KMNO/SOL", "base": "KMNO", "quote": "SOL", "mean_ratio": 0.000375, "std_ratio": 0.0000115, "ou_half_life": 14.5, "beta": 0.92},
-        {"pair": "MET/SOL", "base": "MET", "quote": "SOL", "mean_ratio": 0.00288, "std_ratio": 0.000062, "ou_half_life": 15.0, "beta": 1.18},
-        {"pair": "PUMP/SOL", "base": "PUMP", "quote": "SOL", "mean_ratio": 0.000041, "std_ratio": 0.00000135, "ou_half_life": 9.8, "beta": 1.65}
+        {"pair": "SOL / JUP", "base": "JUP", "quote": "SOL", "mean_ratio": 0.00262, "std_ratio": 0.000042, "ou_half_life": 16.4, "beta": 0.88},
+        {"pair": "SOL / JTO", "base": "JTO", "quote": "SOL", "mean_ratio": 0.00382, "std_ratio": 0.000055, "ou_half_life": 18.2, "beta": 1.05},
+        {"pair": "SOL / RAY", "base": "RAY", "quote": "SOL", "mean_ratio": 0.01750, "std_ratio": 0.000185, "ou_half_life": 22.1, "beta": 1.12},
+        {"pair": "SOL / KMNO", "base": "KMNO", "quote": "SOL", "mean_ratio": 0.000375, "std_ratio": 0.0000115, "ou_half_life": 14.5, "beta": 0.92},
+        {"pair": "SOL / MET", "base": "MET", "quote": "SOL", "mean_ratio": 0.00288, "std_ratio": 0.000062, "ou_half_life": 15.0, "beta": 1.18},
+        {"pair": "SOL / PUMP", "base": "PUMP", "quote": "SOL", "mean_ratio": 0.000041, "std_ratio": 0.00000135, "ou_half_life": 9.8, "beta": 1.65}
     ]
     
     results = []
@@ -324,6 +324,7 @@ def get_pairs_rotation():
             "pair": item["pair"],
             "base_token": item["base"],
             "quote_token": item["quote"],
+            "token_per_sol": round(quote_p / base_p, 2) if base_p > 0 else 0.0,
             "base_usd": base_p,
             "quote_usd": quote_p,
             "current_ratio": current_ratio,
