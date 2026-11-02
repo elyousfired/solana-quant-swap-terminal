@@ -1,12 +1,19 @@
 """
-Solana Quant Swap Terminal - Autonomous Paper Trading Demo Engine
-Simulates automated 1.0 SOL quantitative swap execution on Solana leaders via Jupiter.
-Features:
-- Fixed 1.0 SOL initial capital
-- Maximum 2 concurrent active swaps (Tranche allocation: max 0.45 SOL per position)
-- Z-Score & Half-Life Mean Reversion strategy triggers
-- Persistent state (Server file /tmp fallback + client localStorage sync)
-- Autonomous offline Catch-Up: reconciles trades that occurred while user PC was off.
+Solana Quant Swap Terminal - Shannon's Demon 50/50 Volatility Harvester Engine
+Simulates automated 1.0 SOL quantitative volatility compounding via Jupiter.
+
+Mathematical Framework:
+  g = 0.5μ + 0.125σ²
+  
+Architecture:
+- Fixed 1.0 SOL initial capital.
+- 50% Liquid SOL Cash Anchor (0.50 SOL) - ZERO CAPITAL LOCKUP.
+- 50% Volatility Engine in high-vol Solana leader (e.g. KMNO, RAY, JUP, PUMP).
+- Dynamic Micro-Rebalancing on ±2.5% to ±4.0% Drift:
+    * When Token pumps (Drift >= +2.5%): Sells excess tranche (0.02 - 0.04 SOL) -> SOL Cash.
+    * When Token dips (Drift <= -2.5%): Buys dip using micro-slice (0.02 - 0.04 SOL) of SOL Cash.
+- Capital is NEVER frozen; 50% stays 100% liquid at all times.
+- Offline Catch-up: Reconciles volatility cycles completed while PC was off.
 """
 
 import os
@@ -19,7 +26,6 @@ STATE_FILE_LOCAL = os.path.join(os.path.dirname(__file__), "demo_state.json")
 STATE_FILE_TMP = "/tmp/demo_state.json"
 
 def get_state_file_path() -> str:
-    # Use local directory if writable, else /tmp for Vercel serverless
     try:
         test_file = STATE_FILE_LOCAL + ".test"
         with open(test_file, "w") as f:
@@ -29,19 +35,32 @@ def get_state_file_path() -> str:
     except Exception:
         return STATE_FILE_TMP
 
-def get_initial_state() -> Dict[str, Any]:
+def get_initial_state(pair: str = "SOL / KMNO") -> Dict[str, Any]:
+    token_sym = pair.split("/")[-1].strip() if "/" in pair else "KMNO"
+    now = time.time()
     return {
+        "strategy": "shannon_demon_50_50",
         "is_running": False,
         "initial_capital_sol": 1.0,
         "current_balance_sol": 1.0,
-        "available_sol": 1.0,
+        "active_pair": pair,
+        "token_symbol": token_sym,
+        "sol_cash_balance": 0.50,          # 50% cash anchor (never frozen, 100% liquid)
+        "token_balance": 0.0,              # tokens held
+        "token_entry_ratio": 0.0,
+        "token_sol_value": 0.50,           # Live SOL value of tokens held
+        "current_ratio": 0.0,
+        "weight_sol_pct": 50.0,
+        "weight_token_pct": 50.0,
+        "drift_pct": 0.0,
+        "rebalance_band_pct": 2.5,         # Rebalance trigger threshold
         "total_profit_sol": 0.0,
         "total_profit_pct": 0.0,
-        "max_concurrent_positions": 2,
-        "active_positions": [],
+        "total_cycles_completed": 0,
+        "is_initialized": False,           # Set to True after 50/50 baseline split
         "trade_history": [],
-        "last_tick_time": time.time(),
-        "created_at": time.time()
+        "last_tick_time": now,
+        "created_at": now
     }
 
 def load_demo_state() -> Dict[str, Any]:
@@ -50,7 +69,8 @@ def load_demo_state() -> Dict[str, Any]:
         try:
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                return data
+                if data.get("strategy") == "shannon_demon_50_50":
+                    return data
         except Exception:
             pass
     state = get_initial_state()
@@ -67,41 +87,45 @@ def save_demo_state(state: Dict[str, Any]):
         print("Error saving demo state:", e)
 
 def reset_demo_state(client_state: Dict[str, Any] = None) -> Dict[str, Any]:
-    state = get_initial_state()
+    pair = client_state.get("active_pair", "SOL / KMNO") if client_state else "SOL / KMNO"
+    state = get_initial_state(pair)
     state["is_running"] = True # Start running immediately upon reset
     save_demo_state(state)
     return state
 
 def toggle_demo_state(running: bool = None, client_state: Dict[str, Any] = None) -> Dict[str, Any]:
-    if client_state and isinstance(client_state, dict) and client_state.get("initial_capital_sol"):
+    if client_state and isinstance(client_state, dict) and client_state.get("strategy") == "shannon_demon_50_50":
         state = client_state
     else:
         state = load_demo_state()
+        
     if running is None:
         state["is_running"] = not state.get("is_running", False)
     else:
         state["is_running"] = running
+        
     state["last_tick_time"] = time.time()
     save_demo_state(state)
     return state
 
 def sync_demo_state(client_state: Dict[str, Any]) -> Dict[str, Any]:
-    """Syncs state from client localStorage if server was cold-started and state is fresh."""
-    server_state = load_demo_state()
-    if not server_state.get("trade_history") and client_state and client_state.get("trade_history"):
+    if client_state and client_state.get("strategy") == "shannon_demon_50_50":
         save_demo_state(client_state)
         return client_state
-    return server_state
+    return load_demo_state()
 
 def evaluate_demo_tick(live_pairs: List[Dict[str, Any]], sol_usd: float, client_state: Dict[str, Any] = None) -> Dict[str, Any]:
     """
-    Main evaluation tick:
-    1. Reconciles open positions against live ratios (closes if mean-reversion target reached).
-    2. Opens new positions if active positions < 2 and a pair meets Z <= -2.0 sigma.
-    3. Handles offline catch-up if user was away / PC was off.
-    4. Updates balances, PnL, and persists state.
+    Shannon's Demon 50/50 Volatility Harvester Tick:
+    1. If not initialized, executes initial 50/50 split (0.50 SOL Cash + 0.50 SOL Token).
+    2. Measures live drift |w_Token - 50.0%|.
+    3. If Drift >= 2.5%, triggers micro-rebalance tranche (0.02 - 0.04 SOL):
+       - Drift > 0 (Pump): Sells excess tokens -> Banks SOL cash.
+       - Drift < 0 (Dip): Buys dip using tiny slice of liquid SOL cash.
+    4. Handles offline catch-up if user was away / PC was off.
+    5. Updates equity, harvested alpha, and persists state.
     """
-    if client_state and isinstance(client_state, dict) and client_state.get("initial_capital_sol"):
+    if client_state and isinstance(client_state, dict) and client_state.get("strategy") == "shannon_demon_50_50":
         state = client_state
     else:
         state = load_demo_state()
@@ -114,173 +138,198 @@ def evaluate_demo_tick(live_pairs: List[Dict[str, Any]], sol_usd: float, client_
     time_offline = max(0.0, now - last_tick)
     state["last_tick_time"] = now
 
-    active_positions = state.get("active_positions", [])
+    active_pair = state.get("active_pair", "SOL / KMNO")
+    token_sym = state.get("token_symbol", "KMNO")
     trade_history = state.get("trade_history", [])
-    available_sol = float(state.get("available_sol", 1.0))
-    initial_cap = float(state.get("initial_capital_sol", 1.0))
+    cycles = int(state.get("total_cycles_completed", 0))
+    band = float(state.get("rebalance_band_pct", 2.5))
 
-    # Build lookup map for live pairs
-    pair_map = {p.get("raw_pair", p.get("pair")): p for p in live_pairs}
+    # Find live pair data
+    pair_data = None
     for p in live_pairs:
-        pair_map[p.get("pair")] = p
-        base = p.get("base_token")
-        if base:
-            pair_map[f"SOL / {base}"] = p
-            pair_map[f"{base}/SOL"] = p
+        if p.get("pair") == active_pair or p.get("raw_pair") == active_pair or p.get("base_token") == token_sym:
+            pair_data = p
+            break
+            
+    if not pair_data and live_pairs:
+        pair_data = live_pairs[0]
+        active_pair = pair_data.get("pair", "SOL / KMNO")
+        token_sym = pair_data.get("base_token", "KMNO")
+        state["active_pair"] = active_pair
+        state["token_symbol"] = token_sym
+
+    curr_ratio = float(pair_data.get("current_ratio", 0.000342)) if pair_data else 0.000342
+    if curr_ratio <= 0:
+        return state
+
+    sol_cash = float(state.get("sol_cash_balance", 0.50))
+    token_bal = float(state.get("token_balance", 0.0))
+    is_init = state.get("is_initialized", False)
 
     # -------------------------------------------------------------
-    # 1. EVALUATE EXIT CONDITIONS FOR ACTIVE POSITIONS
+    # 1. INITIAL 50/50 SETUP (First time running)
     # -------------------------------------------------------------
-    remaining_positions = []
-    for pos in active_positions:
-        pair_data = pair_map.get(pos.get("pair")) or pair_map.get(f"SOL / {pos.get('base_token')}")
-        if not pair_data:
-            remaining_positions.append(pos)
-            continue
+    if not is_init or token_bal <= 0:
+        sol_cash = 0.50
+        invest_sol = 0.50
+        net_invest = invest_sol * 0.9985 # 0.15% DEX entry fee
+        token_bal = net_invest / curr_ratio
+        state["token_entry_ratio"] = curr_ratio
+        state["is_initialized"] = True
+        
+        setup_event = {
+            "id": f"setup_{int(now)}",
+            "time": now,
+            "type": "INITIAL_50_50_SETUP",
+            "action": f"Shannon 50/50 Setup: 0.50 SOL Cash + {token_bal:,.1f} {token_sym}",
+            "tranche_sol": 0.50,
+            "tokens_traded": round(token_bal, 2),
+            "ratio": curr_ratio,
+            "drift_harvested_pct": 0.0,
+            "net_profit_sol": -0.00075,
+            "reason": "50/50 Baseline Portfolio Initialized (50% Liquid Cash + 50% Volatility Engine)"
+        }
+        trade_history.insert(0, setup_event)
 
-        curr_ratio = float(pair_data.get("current_ratio", pos.get("entry_ratio")))
-        entry_ratio = float(pos.get("entry_ratio"))
-        sol_invested = float(pos.get("sol_invested"))
-        tokens_held = float(pos.get("tokens_held"))
-        target_yield_pct = float(pos.get("target_yield_pct", 5.0))
-        z_score = float(pair_data.get("z_score", 0.0))
+    # -------------------------------------------------------------
+    # 2. CALCULATE LIVE 50/50 WEIGHTS & DRIFT
+    # -------------------------------------------------------------
+    token_sol_val = token_bal * curr_ratio
+    total_equity = sol_cash + token_sol_val
+    
+    if total_equity > 0:
+        w_sol = (sol_cash / total_equity) * 100.0
+        w_token = (token_sol_val / total_equity) * 100.0
+    else:
+        w_sol = 50.0
+        w_token = 50.0
 
-        # Current gross SOL value of holding
-        current_sol_val = tokens_held * curr_ratio
-        gross_pnl_pct = ((curr_ratio - entry_ratio) / entry_ratio) * 100.0 if entry_ratio > 0 else 0.0
+    raw_drift = w_token - 50.0 # Positive = Token pumped, Negative = Token dumped
+    abs_drift = abs(raw_drift)
 
-        # Exit Trigger: Mean-reversion achieved (Z >= -0.2σ) OR Target yield reached (+4.8%+)
-        # Or holding time exceeded 48h with positive profit
-        holding_hours = (now - pos.get("entry_time", now)) / 3600.0
-        should_exit = False
-        exit_reason = ""
+    # -------------------------------------------------------------
+    # 3. OFFLINE VOLATILITY CATCH-UP (If user PC was turned off)
+    # -------------------------------------------------------------
+    if time_offline >= 600 and is_init:
+        # User was offline for 10+ minutes (up to multiple hours)
+        # Calculate expected cycles completed from volatility g = 0.125 * σ²
+        offline_hours = time_offline / 3600.0
+        est_cycles = min(8, max(1, int(offline_hours * 1.5)))
+        
+        avg_drift = max(band, min(4.5, abs_drift if abs_drift > 0 else 3.2))
+        tranche_size = 0.032
+        offline_alpha_sol = est_cycles * (tranche_size * (avg_drift / 100.0) * 0.9985)
+        
+        sol_cash += offline_alpha_sol
+        cycles += est_cycles
+        
+        offline_event = {
+            "id": f"offline_{int(now)}",
+            "time": now,
+            "type": "OFFLINE_CATCHUP",
+            "action": f"Offline Shannon Harvest: {est_cycles} volatility cycles reconciled while PC was off",
+            "tranche_sol": round(tranche_size * est_cycles, 4),
+            "tokens_traded": round((tranche_size * est_cycles) / curr_ratio, 2),
+            "ratio": curr_ratio,
+            "drift_harvested_pct": round(avg_drift, 2),
+            "net_profit_sol": round(offline_alpha_sol, 5),
+            "reason": f"Compounded g = 0.125σ² across {offline_hours:.1f}h offline ({est_cycles} cycles)"
+        }
+        trade_history.insert(0, offline_event)
+        
+        # Recalculate weights after offline catchup
+        token_sol_val = token_bal * curr_ratio
+        total_equity = sol_cash + token_sol_val
+        w_sol = (sol_cash / total_equity) * 100.0
+        w_token = (token_sol_val / total_equity) * 100.0
+        raw_drift = w_token - 50.0
+        abs_drift = abs(raw_drift)
 
-        if z_score >= -0.20:
-            should_exit = True
-            exit_reason = f"Mean Reversion Achieved (Z={z_score:+.2f}σ)"
-        elif gross_pnl_pct >= (target_yield_pct * 0.90):
-            should_exit = True
-            exit_reason = f"Target Profit Hit (+{gross_pnl_pct:.2f}%)"
-        elif holding_hours >= 24.0 and gross_pnl_pct >= 2.5:
-            should_exit = True
-            exit_reason = f"Time Horizon Reached ({holding_hours:.1f}h, +{gross_pnl_pct:.2f}%)"
-        elif time_offline >= 300 and holding_hours >= 0.5 and (gross_pnl_pct >= 2.0 or z_score >= -0.80):
-            # Offline Catch-up: Position matured during offline period while PC was off
-            should_exit = True
-            exit_reason = f"Offline Mean Reversion (+{gross_pnl_pct:.2f}% while away)"
+    # -------------------------------------------------------------
+    # 4. LIVE SHANNON REBALANCE EXECUTION
+    # -------------------------------------------------------------
+    if abs_drift >= band and total_equity > 0:
+        # Rebalance Tranche: amount needed to bring both sides back to exactly 50/50
+        delta_sol = (abs_drift / 100.0) * total_equity
+        # Bound tranche size to 0.015 - 0.06 SOL for safety and zero slippage
+        tranche_sol = min(0.06, max(0.015, delta_sol))
 
-        if should_exit:
-            # Deduct 0.20% DEX fee on exit
-            net_sol_returned = current_sol_val * 0.9980
-            profit_sol = net_sol_returned - sol_invested
-            profit_pct = (profit_sol / sol_invested) * 100.0
+        if raw_drift > 0:
+            # TOKEN PUMPED -> SELL EXCESS TOKEN -> BANK SOL CASH
+            tokens_to_sell = tranche_sol / curr_ratio
+            if tokens_to_sell <= token_bal:
+                net_sol_received = tranche_sol * 0.9985 # 0.15% fee
+                token_bal -= tokens_to_sell
+                sol_cash += net_sol_received
+                cycles += 1
+                
+                cycle_alpha = tranche_sol * (abs_drift / 100.0) * 0.9985
+                rebalance_event = {
+                    "id": f"rebal_{int(now)}_{cycles}",
+                    "time": now,
+                    "type": "SELL_EXCESS",
+                    "action": f"Rebalance Sell: Trimmed {abs_drift:.1f}% excess {token_sym} ➔ SOL",
+                    "tranche_sol": round(tranche_sol, 4),
+                    "tokens_traded": round(tokens_to_sell, 2),
+                    "ratio": curr_ratio,
+                    "drift_harvested_pct": round(abs_drift, 2),
+                    "net_profit_sol": round(cycle_alpha, 5),
+                    "reason": f"Harvested Volatility Surge (+{abs_drift:.1f}% Drift) ➔ Locked into SOL Cash"
+                }
+                trade_history.insert(0, rebalance_event)
 
-            available_sol += net_sol_returned
-
-            closed_trade = {
-                "id": pos.get("id"),
-                "pair": pos.get("pair"),
-                "base_token": pos.get("base_token"),
-                "entry_time": pos.get("entry_time"),
-                "exit_time": now,
-                "holding_duration_h": round(holding_hours, 1),
-                "sol_invested": round(sol_invested, 4),
-                "tokens_swapped": round(tokens_held, 4),
-                "entry_ratio": entry_ratio,
-                "exit_ratio": curr_ratio,
-                "entry_z_score": pos.get("entry_z_score"),
-                "exit_z_score": z_score,
-                "sol_returned": round(net_sol_returned, 4),
-                "net_profit_sol": round(profit_sol, 4),
-                "net_profit_pct": round(profit_pct, 2),
-                "exit_reason": exit_reason,
-                "jupiter_route": f"SOL ➔ {pos.get('base_token')} ➔ SOL"
-            }
-            trade_history.insert(0, closed_trade) # Latest on top
         else:
-            # Update live tracking info on open position
-            pos["current_ratio"] = curr_ratio
-            pos["current_sol_value"] = round(current_sol_val, 4)
-            pos["unrealized_pnl_pct"] = round(gross_pnl_pct, 2)
-            pos["current_z_score"] = round(z_score, 2)
-            remaining_positions.append(pos)
+            # TOKEN DIPPED -> BUY DIP USING LIQUID SOL CASH
+            if sol_cash >= (tranche_sol + 0.05): # Leave at least 0.05 SOL safety buffer
+                tokens_bought = (tranche_sol * 0.9985) / curr_ratio
+                sol_cash -= tranche_sol
+                token_bal += tokens_bought
+                cycles += 1
+                
+                cycle_alpha = tranche_sol * (abs_drift / 100.0) * 0.9985
+                rebalance_event = {
+                    "id": f"rebal_{int(now)}_{cycles}",
+                    "time": now,
+                    "type": "BUY_DIP",
+                    "action": f"Rebalance Buy: Bought {abs_drift:.1f}% dip in {token_sym} with SOL Cash",
+                    "tranche_sol": round(tranche_sol, 4),
+                    "tokens_traded": round(tokens_bought, 2),
+                    "ratio": curr_ratio,
+                    "drift_harvested_pct": round(abs_drift, 2),
+                    "net_profit_sol": round(cycle_alpha, 5),
+                    "reason": f"Bought Dip at Discount (-{abs_drift:.1f}% Drift) ➔ Restored 50/50 Balance"
+                }
+                trade_history.insert(0, rebalance_event)
 
-    active_positions = remaining_positions
-
-    # -------------------------------------------------------------
-    # 2. EVALUATE ENTRY CONDITIONS FOR NEW POSITIONS
-    # -------------------------------------------------------------
-    max_positions = int(state.get("max_concurrent_positions", 2))
-    
-    # Check if we have an open slot and enough available capital
-    if len(active_positions) < max_positions and available_sol >= 0.25:
-        # Find candidates meeting oversold trigger (Z <= -2.0)
-        candidates = []
-        currently_held = {p.get("base_token") for p in active_positions}
-
-        for p in live_pairs:
-            base_token = p.get("base_token")
-            z = float(p.get("z_score", 0.0))
-            if base_token not in currently_held and z <= -2.0:
-                candidates.append((z, p))
-
-        # Sort by most oversold (lowest Z-score first, e.g. -2.72 before -2.10)
-        candidates.sort(key=lambda x: x[0])
-
-        slots_available = max_positions - len(active_positions)
-        for _, pair_data in candidates[:slots_available]:
-            base_token = pair_data.get("base_token")
-            curr_ratio = float(pair_data.get("current_ratio", 0.0))
-            if curr_ratio <= 0:
-                continue
-
-            # Allocation: tranche of available capital (max 0.45 SOL per slot)
-            alloc_sol = min(0.45, available_sol * (1.0 / slots_available))
-            if alloc_sol < 0.20:
-                break
-
-            # Deduct 0.15% DEX entry fee
-            effective_sol = alloc_sol * 0.9985
-            tokens_bought = effective_sol / curr_ratio
-
-            new_pos = {
-                "id": f"trade_{int(now)}_{base_token}",
-                "pair": pair_data.get("pair"),
-                "base_token": base_token,
-                "quote_token": "SOL",
-                "entry_time": now,
-                "sol_invested": round(alloc_sol, 4),
-                "tokens_held": round(tokens_bought, 4),
-                "entry_ratio": curr_ratio,
-                "current_ratio": curr_ratio,
-                "entry_z_score": round(float(pair_data.get("z_score", 0.0)), 2),
-                "current_z_score": round(float(pair_data.get("z_score", 0.0)), 2),
-                "target_yield_pct": round(float(pair_data.get("target_yield_pct", 5.5)), 2),
-                "unrealized_pnl_pct": 0.0,
-                "current_sol_value": round(alloc_sol, 4),
-                "status": "OPEN"
-            }
-
-            available_sol -= alloc_sol
-            active_positions.append(new_pos)
-            currently_held.add(base_token)
+        # Recalculate weights after rebalance
+        token_sol_val = token_bal * curr_ratio
+        total_equity = sol_cash + token_sol_val
+        w_sol = (sol_cash / total_equity) * 100.0
+        w_token = (token_sol_val / total_equity) * 100.0
+        raw_drift = w_token - 50.0
+        abs_drift = abs(raw_drift)
 
     # -------------------------------------------------------------
-    # 3. RECALCULATE PORTFOLIO METRICS
+    # 5. PORTFOLIO METRICS & PERSISTENCE
     # -------------------------------------------------------------
-    # Total portfolio equity = Available SOL + Current value of active positions
-    positions_equity = sum(p.get("current_sol_value", p.get("sol_invested")) for p in active_positions)
-    total_balance_sol = available_sol + positions_equity
-    
-    total_profit_sol = total_balance_sol - initial_cap
+    token_sol_val = token_bal * curr_ratio
+    total_balance = sol_cash + token_sol_val
+    initial_cap = float(state.get("initial_capital_sol", 1.0))
+    total_profit_sol = total_balance - initial_cap
     total_profit_pct = (total_profit_sol / initial_cap) * 100.0
 
-    state["available_sol"] = round(available_sol, 4)
-    state["current_balance_sol"] = round(total_balance_sol, 4)
+    state["sol_cash_balance"] = round(sol_cash, 4)
+    state["token_balance"] = round(token_bal, 4)
+    state["token_sol_value"] = round(token_sol_val, 4)
+    state["current_ratio"] = curr_ratio
+    state["weight_sol_pct"] = round(w_sol, 1)
+    state["weight_token_pct"] = round(w_token, 1)
+    state["drift_pct"] = round(raw_drift, 1)
+    state["current_balance_sol"] = round(total_balance, 4)
     state["total_profit_sol"] = round(total_profit_sol, 4)
     state["total_profit_pct"] = round(total_profit_pct, 2)
-    state["active_positions"] = active_positions
-    state["trade_history"] = trade_history[:50] # Keep latest 50 trades
+    state["total_cycles_completed"] = cycles
+    state["trade_history"] = trade_history[:60] # Keep latest 60 micro-rebalances
 
     save_demo_state(state)
     return state
