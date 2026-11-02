@@ -707,7 +707,7 @@ function renderDemoUI(state) {
   const gridEl = document.getElementById('active-positions-grid');
   const slotsInd = document.getElementById('active-slots-indicator');
   if (slotsInd) {
-    slotsInd.innerText = `${activeCount} / 3 Shannon 50/50 engines active`;
+    slotsInd.innerText = `${activeCount} Shannon 50/50 engine${activeCount === 1 ? '' : 's'} active (Dynamic Fee Capacity)`;
   }
   if (gridEl) {
     const slotKeys = Object.keys(activeSlots);
@@ -805,8 +805,12 @@ function renderDemoUI(state) {
         badgeHtml = '<span class="px-2 py-0.5 rounded bg-solana-purple/20 text-solana-purple border border-solana-purple/40 text-[10px]">SHANNON 50/50 ACTIVE</span>';
       } else if (item.gate_status === 'QUALIFIED') {
         badgeHtml = '<span class="px-2 py-0.5 rounded bg-solana-green/20 text-solana-green border border-solana-green/40 text-[10px] animate-pulse">⚡ EV+ QUALIFIED</span>';
+      } else if (item.gate_status === 'WAITING_DIP') {
+        badgeHtml = `<span class="px-2 py-0.5 rounded bg-gray-800 text-gray-400 border border-gray-700 text-[10px]">WAITING DIP (Z &gt; -1.4)</span>`;
       } else if (item.gate_status === 'BLOCKED_LOW_CASH') {
         badgeHtml = `<span class="px-2 py-0.5 rounded bg-red-500/20 text-red-300 border border-red-500/40 text-[10px]">🛡️ GATE: LOW CASH</span>`;
+      } else if (item.gate_status === 'BLOCKED_GAS_BUFFER') {
+        badgeHtml = `<span class="px-2 py-0.5 rounded bg-red-500/20 text-red-300 border border-red-500/40 text-[10px]">🛡️ GATE: GAS BUFFER</span>`;
       } else if (item.gate_status === 'BLOCKED_FEE_DRAG') {
         badgeHtml = `<span class="px-2 py-0.5 rounded bg-red-500/20 text-red-300 border border-red-500/40 text-[10px]">🛡️ GATE: HIGH FEE</span>`;
       } else {

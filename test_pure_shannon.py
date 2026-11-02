@@ -1,46 +1,57 @@
 from backend.demo_engine import get_initial_state, evaluate_demo_tick
 
+# Test scenario reflecting the user's real situation:
+# PUMP is overbought/high at Z = +1.94 (yield 0.0%)
+# KMNO is in an oversold dip at Z = -2.5 (yield 3.5%)
+# RAY is in an oversold dip at Z = -1.9 (yield 3.1%)
+# JTO is in a dip at Z = -1.7 (yield 2.5%)
+# JUP is in a dip at Z = -1.5 (yield 2.2%)
+# MET is neutral at Z = 0.5 (yield 1.0%)
 mock_pairs = [
     {'base_token': 'KMNO', 'current_ratio': 0.00034, 'z_score': -2.5, 'target_yield_pct': 3.5},
-    {'base_token': 'PUMP', 'current_ratio': 0.000042, 'z_score': -2.1, 'target_yield_pct': 4.2},
+    {'base_token': 'PUMP', 'current_ratio': 0.000042, 'z_score': 1.94, 'target_yield_pct': 0.0},
     {'base_token': 'RAY', 'current_ratio': 0.017, 'z_score': -1.9, 'target_yield_pct': 3.1},
-    {'base_token': 'JUP', 'current_ratio': 0.0027, 'z_score': 0.5, 'target_yield_pct': 1.0},
-    {'base_token': 'JTO', 'current_ratio': 0.0039, 'z_score': 0.8, 'target_yield_pct': 1.0},
-    {'base_token': 'MET', 'current_ratio': 0.0029, 'z_score': 1.2, 'target_yield_pct': 1.0}
+    {'base_token': 'JTO', 'current_ratio': 0.0039, 'z_score': -1.7, 'target_yield_pct': 2.5},
+    {'base_token': 'JUP', 'current_ratio': 0.0027, 'z_score': -1.5, 'target_yield_pct': 2.2},
+    {'base_token': 'MET', 'current_ratio': 0.0029, 'z_score': 0.5, 'target_yield_pct': 1.0}
 ]
 
 state = get_initial_state()
 state['is_running'] = True
 
-print("=== Tick 1: Opening Slot 1 (KMNO) with 50% Central Cash (0.50 SOL) ===")
+print("=== Test 1: PUMP at Z=+1.94 MUST NOT ENTER (Waiting Dip Filter) ===")
 state = evaluate_demo_tick(mock_pairs, 95.0, client_state=state)
-print("Central Cash:", state["central_cash_sol"], "SOL")
-print("Active Slots:", list(state["active_slots"].keys()))
-slot_kmno = state["active_slots"]["KMNO"]
-print(f"  KMNO Slot: Cash={slot_kmno['slot_cash']} SOL | Tokens Value={slot_kmno['token_sol_val']} SOL | Drift={slot_kmno['drift_pct']}%")
+print("Active Slots Opened:", list(state["active_slots"].keys()))
+pump_status = [s for s in state["scanned_pairs_status"] if s["symbol"] == "PUMP"][0]
+print(f"PUMP Status: {pump_status['status_text']} | Gate Status: {pump_status['gate_status']}")
+assert "PUMP" not in state["active_slots"], "CRITICAL ERROR: PUMP entered despite Z > -1.4!"
+assert "KMNO" in state["active_slots"], "KMNO should have entered as it is in a qualified dip!"
+print("PASSED: PUMP was filtered out and KMNO entered cleanly!\n")
 
-print("\n=== Tick 2: Opening Slot 2 (PUMP) with 50% of Remaining Cash (0.25 SOL) ===")
+print("=== Test 2: Multi-Slot Expansion without 3-Slot Limit ===")
+# Tick 2: RAY should enter (Slot 2)
 state = evaluate_demo_tick(mock_pairs, 95.0, client_state=state)
-print("Central Cash:", state["central_cash_sol"], "SOL")
-print("Active Slots:", list(state["active_slots"].keys()))
-slot_pump = state["active_slots"]["PUMP"]
-print(f"  PUMP Slot: Cash={slot_pump['slot_cash']} SOL | Tokens Value={slot_pump['token_sol_val']} SOL | Drift={slot_pump['drift_pct']}%")
+print(f"Tick 2 Slots: {list(state['active_slots'].keys())} | Central Cash: {state['central_cash_sol']:.4f} SOL")
 
-print("\n=== Tick 3: KMNO PUMPS (+6.0% Drift) -> SHANNON VOLATILITY HARVEST TRIGGER ===")
-# Simulate price pump in KMNO
-mock_pairs[0]['current_ratio'] = 0.00034 * 1.08 # +8% price rise -> pushes token weight to ~54% (+4% drift)
+# Tick 3: JTO should enter (Slot 3)
 state = evaluate_demo_tick(mock_pairs, 95.0, client_state=state)
-slot_kmno_after = state["active_slots"]["KMNO"]
-print("Latest Trade:", state["trade_history"][0]["action"])
-print("Reason:", state["trade_history"][0]["reason"])
-print(f"KMNO After Rebalance: Cash={slot_kmno_after['slot_cash']} SOL | Tokens={slot_kmno_after['tokens_held']} | Drift={slot_kmno_after['drift_pct']}%")
-print("Total Harvested Alpha:", state["total_harvested_alpha_sol"], "SOL")
+print(f"Tick 3 Slots: {list(state['active_slots'].keys())} | Central Cash: {state['central_cash_sol']:.4f} SOL")
 
-print("\n=== Tick 4: Testing Fee Gate Protection on Low Cash (0.0005 SOL) ===")
-state["central_cash_sol"] = 0.0005
+# Tick 4: JUP should enter (Slot 4 - previously capped at 3!)
+state = evaluate_demo_tick(mock_pairs, 95.0, client_state=state)
+print(f"Tick 4 Slots: {list(state['active_slots'].keys())} | Central Cash: {state['central_cash_sol']:.4f} SOL")
+assert len(state["active_slots"]) == 4, f"Expected 4 active slots, found {len(state['active_slots'])}"
+print("PASSED: Multi-slot expansion beyond 3 slots verified successfully!\n")
+
+print("=== Test 3: Natural Fee Gate Stop when Cash < 0.020 SOL ===")
+# Set cash low so prospective tranche < 0.020 SOL
+state["central_cash_sol"] = 0.015  # Tranche would be 0.0075 SOL < 0.020 SOL
 state["active_slots"].clear()
+# Add another dip token
+mock_pairs.append({'base_token': 'NEWDIP', 'current_ratio': 0.001, 'z_score': -2.0, 'target_yield_pct': 3.0})
 state = evaluate_demo_tick(mock_pairs, 95.0, client_state=state)
-print("Central Cash after Gate:", state["central_cash_sol"], "SOL")
-print("Active Slots Opened:", len(state["active_slots"]))
-print("Scanner Status for KMNO:", [s for s in state["scanned_pairs_status"] if s["symbol"] == "KMNO"][0]["status_text"])
-print("\n>>> PURE SHANNON LOGIC 100% VERIFIED AND WORKING! <<<")
+print(f"Central Cash: {state['central_cash_sol']} SOL | Slots opened: {len(state['active_slots'])}")
+assert len(state["active_slots"]) == 0, "Fee gate should have blocked trade on insufficient cash!"
+print("PASSED: Pre-Flight Fee Gate successfully protected wallet from fee destruction!\n")
+
+print("=== ALL TESTS PASSED WITH 100% SUCCESS! ===")

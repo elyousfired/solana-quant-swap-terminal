@@ -306,7 +306,6 @@ def evaluate_demo_tick(live_pairs: List[Dict[str, Any]], sol_usd: float, client_
         target_yield = float(p_data.get("target_yield_pct", 2.8)) if p_data else 2.8
 
         is_already_held = sym in active_slots
-        score = abs(z_score) if z_score <= -0.5 else 0.5
         
         status_text = "MONITORING"
         gate_status = "READY"
@@ -316,37 +315,49 @@ def evaluate_demo_tick(live_pairs: List[Dict[str, Any]], sol_usd: float, client_
             status_text = f"ACTIVE (50/50 Drift: {slot['drift_pct']:+.1f}%)"
             gate_status = "SLOT_ACTIVE"
         else:
-            # Check feasibility for prospective 50% central cash allocation
-            prospective_tranche = central_cash * 0.50
-            dex_fee_roundtrip = prospective_tranche * 0.0030 # 2x 0.15%
-            gas_fee_roundtrip = 0.000010
-            total_friction = dex_fee_roundtrip + gas_fee_roundtrip
-            expected_alpha = prospective_tranche * (REBALANCE_BAND_PCT / 100.0)
-            net_ev = expected_alpha - total_friction
+            # Check if this token is in a genuine statistical dip where mean-reversion & volatility give an edge
+            # Condition: Z-score <= -1.4 (oversold discount) AND target_yield >= 2.0%
+            is_oversold_dip = (z_score <= -1.4) and (target_yield >= 2.0)
             
-            fee_drag_pct = (total_friction / expected_alpha) * 100.0 if expected_alpha > 0 else 100.0
-            
-            if prospective_tranche < MIN_TRANCHE_SOL:
-                status_text = f"FILTERED: Tranche {prospective_tranche:.4f} SOL < Min {MIN_TRANCHE_SOL} SOL"
-                gate_status = "BLOCKED_LOW_CASH"
-            elif net_ev <= 0 or (fee_drag_pct > (MAX_FEE_DRAG_RATIO * 100.0)):
-                status_text = f"FILTERED: High Fee Friction ({fee_drag_pct:.1f}% of Drift Alpha)"
-                gate_status = "BLOCKED_FEE_DRAG"
+            if not is_oversold_dip:
+                status_text = f"WAITING DIP (Z={z_score:+.2f} > -1.4)"
+                gate_status = "WAITING_DIP"
             else:
-                status_text = f"SIGNAL QUALIFIED: Z={z_score:.2f} (50/50 Ready)"
-                gate_status = "QUALIFIED"
+                # Check Pre-Flight Fee Gate feasibility for prospective 50% central cash allocation
+                prospective_tranche = central_cash * 0.50
+                dex_fee_roundtrip = prospective_tranche * 0.0030 # 2x 0.15% (entry + 1st rebalance)
+                gas_fee_roundtrip = 0.000010
+                total_friction = dex_fee_roundtrip + gas_fee_roundtrip
+                expected_alpha = prospective_tranche * (REBALANCE_BAND_PCT / 100.0)
+                net_ev = expected_alpha - total_friction
                 
-                if score > best_candidate_score:
-                    best_candidate_score = score
-                    candidate_to_enter = {
-                        "symbol": sym,
-                        "ratio": curr_ratio,
-                        "z_score": z_score,
-                        "target_yield": target_yield,
-                        "tranche_sol": prospective_tranche,
-                        "friction": total_friction,
-                        "net_ev": net_ev
-                    }
+                fee_drag_pct = (total_friction / expected_alpha) * 100.0 if expected_alpha > 0 else 100.0
+                
+                if prospective_tranche < MIN_TRANCHE_SOL:
+                    status_text = f"FILTERED: Tranche {prospective_tranche:.4f} SOL < Min {MIN_TRANCHE_SOL} SOL"
+                    gate_status = "BLOCKED_LOW_CASH"
+                elif (central_cash - prospective_tranche) < MIN_RESERVE_BUFFER:
+                    status_text = f"FILTERED: Gas Buffer Reserve (< {MIN_RESERVE_BUFFER} SOL)"
+                    gate_status = "BLOCKED_GAS_BUFFER"
+                elif net_ev <= 0 or (fee_drag_pct > (MAX_FEE_DRAG_RATIO * 100.0)):
+                    status_text = f"FILTERED: High Fee Friction ({fee_drag_pct:.1f}% of Drift Alpha)"
+                    gate_status = "BLOCKED_FEE_DRAG"
+                else:
+                    status_text = f"SIGNAL QUALIFIED: Z={z_score:.2f} (50/50 Ready)"
+                    gate_status = "QUALIFIED"
+                    
+                    score = abs(z_score) * (target_yield / 2.0)
+                    if score > best_candidate_score:
+                        best_candidate_score = score
+                        candidate_to_enter = {
+                            "symbol": sym,
+                            "ratio": curr_ratio,
+                            "z_score": z_score,
+                            "target_yield": target_yield,
+                            "tranche_sol": prospective_tranche,
+                            "friction": total_friction,
+                            "net_ev": net_ev
+                        }
 
         scanned_status.append({
             "symbol": sym,
@@ -362,7 +373,9 @@ def evaluate_demo_tick(live_pairs: List[Dict[str, Any]], sol_usd: float, client_
     # -------------------------------------------------------------
     # 3. INITIALIZE NEW SHANNON 50/50 SLOT WITH 50% CASH
     # -------------------------------------------------------------
-    if candidate_to_enter and len(active_slots) < 3:
+    # NO ARBITRARY SLOT LIMIT: Enters whenever a profitable qualified dip exists
+    # and satisfies the Pre-Flight Fee Feasibility Gate
+    if candidate_to_enter:
         cand_sym = candidate_to_enter["symbol"]
         tranche = candidate_to_enter["tranche_sol"]
         ratio = candidate_to_enter["ratio"]
@@ -408,7 +421,7 @@ def evaluate_demo_tick(live_pairs: List[Dict[str, Any]], sol_usd: float, client_
                 "tokens_traded": round(tokens_bought, 2),
                 "ratio": ratio,
                 "net_profit_sol": round(-slot_token_invest * 0.0015, 5),
-                "reason": f"50% Cash Allocator -> Initialized 50/50 Shannon Harvester (Net EV+ Passed, Fees < 15%)"
+                "reason": f"50% Cash Allocator -> Initialized 50/50 Shannon Harvester (Dip Z={candidate_to_enter['z_score']:.2f}, Fee Drag < 20%)"
             }
             trade_history.insert(0, entry_event)
         else:
