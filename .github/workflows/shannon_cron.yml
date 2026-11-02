@@ -1,0 +1,16 @@
+name: 24/7 Shannon Autonomous Cloud Worker
+
+on:
+  schedule:
+    # Runs every 5 minutes 24/7 in the cloud independent of the user's PC
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Live Production Tick on Vercel
+        run: |
+          echo "Pinging Solana Quant Terminal Production Endpoint..."
+          curl -s -X POST "https://solanaswapterminal.vercel.app/api/demo/tick" -H "Content-Type: application/json" -d '{"running": true}' | jq .

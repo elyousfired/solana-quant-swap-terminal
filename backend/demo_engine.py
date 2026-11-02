@@ -160,40 +160,6 @@ def evaluate_demo_tick(live_pairs: List[Dict[str, Any]], sol_usd: float, client_
         pairs_by_base[base] = p
 
     # -------------------------------------------------------------
-    # 0. OFFLINE VOLATILITY RECONCILIATION
-    # -------------------------------------------------------------
-    if time_offline >= 600 and len(active_slots) > 0:
-        offline_hours = time_offline / 3600.0
-        est_cycles_per_slot = min(6, max(1, int(offline_hours * 1.4)))
-        
-        for sym, slot in active_slots.items():
-            pair_data = pairs_by_base.get(sym)
-            curr_r = float(pair_data.get("current_ratio", slot["current_ratio"])) if pair_data else slot["current_ratio"]
-            
-            # Compounded alpha: g = 0.125 * sigma^2
-            tranche_rebal = slot["slot_capital"] * 0.035
-            offline_gain = est_cycles_per_slot * (tranche_rebal * 0.025 * 0.9985)
-            
-            slot["slot_cash"] += offline_gain
-            slot["harvested_alpha_sol"] += offline_gain
-            slot["cycles_completed"] += est_cycles_per_slot
-            total_alpha += offline_gain
-            cycles += est_cycles_per_slot
-            
-            offline_event = {
-                "id": f"offline_{int(now)}_{sym}",
-                "time": now,
-                "type": "SHANNON_RECONCILE",
-                "action": f"Shannon Harvest: {est_cycles_per_slot} drift cycles reconciled on {sym} while PC was off",
-                "tranche_sol": round(tranche_rebal * est_cycles_per_slot, 4),
-                "tokens_traded": round((tranche_rebal * est_cycles_per_slot) / curr_r, 2) if curr_r > 0 else 0,
-                "ratio": curr_r,
-                "net_profit_sol": round(offline_gain, 5),
-                "reason": f"Compounded g = 0.125σ² across {offline_hours:.1f}h offline ({est_cycles_per_slot} cycles)"
-            }
-            trade_history.insert(0, offline_event)
-
-    # -------------------------------------------------------------
     # 1. CONTINUOUS SHANNON 50/50 REBALANCING ON ACTIVE SLOTS
     # -------------------------------------------------------------
     for sym, slot in list(active_slots.items()):
