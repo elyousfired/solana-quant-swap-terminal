@@ -301,9 +301,13 @@ def evaluate_demo_tick(live_pairs: List[Dict[str, Any]], sol_usd: float, client_
     CANDIDATE_LIST = ["KMNO", "PUMP", "RAY", "JUP", "JTO", "MET"]
     for sym in CANDIDATE_LIST:
         p_data = pairs_by_base.get(sym)
-        curr_ratio = float(p_data.get("current_ratio", 0.00034)) if p_data else 0.00034
-        z_score = float(p_data.get("z_score", -1.8)) if p_data else -1.8
-        target_yield = float(p_data.get("target_yield_pct", 2.8)) if p_data else 2.8
+        if not p_data:
+            continue
+        curr_ratio = float(p_data.get("current_ratio", 0.0))
+        z_score = float(p_data.get("z_score", 0.0))
+        target_yield = float(p_data.get("target_yield_pct", 0.0))
+        if curr_ratio <= 0:
+            continue
 
         is_already_held = sym in active_slots
         
