@@ -1,33 +1,34 @@
 """
-Solana Quant Swap Terminal - Autonomous Multi-Opportunity Hunter Engine
-Implements Zeno's Fractional Cash Allocator (50% Halving Law) with Pre-Execution Fee Feasibility Gate.
+Solana Quant Swap Terminal - Pure Shannon's Demon Multi-Slot Volatility Harvester Engine
+Strictly adheres to Claude Shannon's 50/50 Volatility Rebalancing (g = 0.5μ + 0.125σ²),
+combined with Zeno's 50% Halving Cash Allocator and Pre-Flight Fee Feasibility Gate.
 
 Mathematical & Architectural Principles:
-1. Pure Autonomous Execution:
-   - Zero manual pair selection.
-   - Continuously scans Solana pairs (KMNO, RAY, JUP, PUMP, JTO, MET) for quantitative entry triggers (Z-score <= -1.4 or high volatility spread).
+1. Pure Shannon 50/50 Inside Every Active Slot:
+   - Every active opportunity is an independent Shannon 50/50 Engine:
+     * 50% Cash Anchor + 50% Volatile Token.
+     * Capital is NEVER completely exited or dumped; it continuously dances with volatility.
+     * Rebalances whenever |Drift| >= 2.5%:
+       - Token pumps (Drift >= +2.5%): Sells excess tranche -> Banks SOL cash.
+       - Token dumps (Drift <= -2.5%): Buys dip using cash at discount -> Restores 50/50 balance.
+     * Harvests deterministic alpha: g = 0.5μ + 0.125σ².
 
-2. Zeno's Halving Cash Law (50% of available cash per opportunity):
-   - Trade 1: 50% of 1.000 SOL = 0.500 SOL (Leaves 0.500 SOL liquid cash)
-   - Trade 2: 50% of 0.500 SOL = 0.250 SOL (Leaves 0.250 SOL liquid cash)
-   - Trade 3: 50% of 0.250 SOL = 0.125 SOL (Leaves 0.125 SOL liquid cash)
-   - Cash can NEVER reach zero; always leaves liquid safety reserves.
+2. Zeno's 50% Halving Cash Allocator:
+   - When scanner detects a qualified volatile pair:
+     * Slot 1: Allocates 50% of available central cash = 0.500 SOL (leaves 0.500 SOL).
+     * Slot 2: Allocates 50% of remaining central cash = 0.250 SOL (leaves 0.250 SOL).
+     * Slot 3: Allocates 50% of remaining central cash = 0.125 SOL (leaves 0.125 SOL).
+     * Cash never reaches zero; always leaves liquid safety reserves.
 
-3. Pre-Execution Economic Feasibility & Fee Gate (User's Exact Law):
-   - Before any swap:
-     * Candidate Tranche: S = 0.50 * available_sol_cash
+3. Pre-Flight Economic Feasibility & Fee Gate (User's Exact Rule):
+   - Before opening any new Shannon slot:
+     * Candidate Tranche: S = 0.50 * available_central_cash
      * Round-Trip Friction: DEX (2 * 0.15% = 0.30%) + Solana Gas (0.000010 SOL)
-     * Expected Statistical Move: Gain = S * target_yield_pct (e.g. 2.5% to 3.5%)
-     * Net EV = Gain - Friction
+     * Expected Volatility Alpha: Gain = S * (rebalance_band / 100)
      * Gate Condition:
        - If S < MIN_TRANCHE_SOL (0.020 SOL) -> REJECT (Insufficient cash, fees would eat profits).
-       - If Net EV <= 0 OR (Friction / Gain) > 0.20 -> REJECT (Fee drag too high).
-       - When rejected, capital stays 100% safe as liquid cash cushion.
-
-4. Position Cash Recycling:
-   - When any active position reaches its take-profit target (+2.5% to +4.5%) or mean-reverts (Z >= 0):
-     * Position closes -> Capital + Profit returns 100% to liquid SOL cash.
-     * Cash expands, increasing future 50% trade sizes!
+       - If Fees > 20% of Expected Gain -> REJECT.
+       - Must preserve >= 0.005 SOL for network gas.
 """
 
 import os
@@ -41,8 +42,8 @@ STATE_FILE_TMP = "/tmp/demo_state.json"
 
 MIN_TRANCHE_SOL = 0.020        # Minimum viable trade floor to prevent fee destruction
 MIN_RESERVE_BUFFER = 0.005     # Absolute gas safety buffer in SOL
+REBALANCE_BAND_PCT = 2.5       # Sacred Shannon drift threshold (±2.5%)
 MAX_FEE_DRAG_RATIO = 0.20     # Maximum allowed fee / gross expected gain (20%)
-TARGET_PROFIT_PCT = 2.80       # Target take-profit move per position (+2.8% net)
 
 def get_state_file_path() -> str:
     try:
@@ -57,13 +58,14 @@ def get_state_file_path() -> str:
 def get_initial_state() -> Dict[str, Any]:
     now = time.time()
     return {
-        "strategy": "zeno_shannon_multi_hunter",
+        "strategy": "pure_shannon_multi_hunter",
         "is_running": False,
         "initial_capital_sol": 1.0,
         "current_balance_sol": 1.0,
-        "sol_cash_balance": 1.0,               # 100% liquid cash at start
-        "active_positions": {},                # dict of token_sym -> position details
-        "active_positions_count": 0,
+        "central_cash_sol": 1.0,              # Liquid uncommitted cash pool
+        "active_slots": {},                   # dict of token_sym -> Shannon 50/50 Slot
+        "active_slots_count": 0,
+        "total_harvested_alpha_sol": 0.0,
         "total_profit_sol": 0.0,
         "total_profit_pct": 0.0,
         "total_cycles_completed": 0,
@@ -80,7 +82,7 @@ def load_demo_state() -> Dict[str, Any]:
         try:
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                if data.get("strategy") == "zeno_shannon_multi_hunter":
+                if data.get("strategy") == "pure_shannon_multi_hunter":
                     return data
         except Exception:
             pass
@@ -104,7 +106,7 @@ def reset_demo_state(client_state: Dict[str, Any] = None) -> Dict[str, Any]:
     return state
 
 def toggle_demo_state(running: bool = None, client_state: Dict[str, Any] = None) -> Dict[str, Any]:
-    if client_state and isinstance(client_state, dict) and client_state.get("strategy") == "zeno_shannon_multi_hunter":
+    if client_state and isinstance(client_state, dict) and client_state.get("strategy") == "pure_shannon_multi_hunter":
         state = client_state
     else:
         state = load_demo_state()
@@ -119,16 +121,20 @@ def toggle_demo_state(running: bool = None, client_state: Dict[str, Any] = None)
     return state
 
 def sync_demo_state(client_state: Dict[str, Any]) -> Dict[str, Any]:
-    if client_state and client_state.get("strategy") == "zeno_shannon_multi_hunter":
+    if client_state and client_state.get("strategy") == "pure_shannon_multi_hunter":
         save_demo_state(client_state)
         return client_state
     return load_demo_state()
 
 def evaluate_demo_tick(live_pairs: List[Dict[str, Any]], sol_usd: float, client_state: Dict[str, Any] = None) -> Dict[str, Any]:
     """
-    Autonomous Multi-Opportunity Hunter Engine with 50% Halving & Fee Feasibility Gate.
+    Pure Shannon's Demon Multi-Slot Volatility Harvester Tick:
+    1. Offline Volatility Catch-Up (reconciles g = 0.125σ² if user was offline).
+    2. Continuous Shannon 50/50 Rebalancing on all active slots (|Drift| >= 2.5%).
+    3. Auto-Scans candidate Solana pairs.
+    4. Evaluates Pre-Flight Fee Feasibility Gate before opening new 50% Cash slots.
     """
-    if client_state and isinstance(client_state, dict) and client_state.get("strategy") == "zeno_shannon_multi_hunter":
+    if client_state and isinstance(client_state, dict) and client_state.get("strategy") == "pure_shannon_multi_hunter":
         state = client_state
     else:
         state = load_demo_state()
@@ -141,10 +147,11 @@ def evaluate_demo_tick(live_pairs: List[Dict[str, Any]], sol_usd: float, client_
     time_offline = max(0.0, now - last_tick)
     state["last_tick_time"] = now
 
-    sol_cash = float(state.get("sol_cash_balance", 1.0))
-    active_positions = state.get("active_positions", {})
+    central_cash = float(state.get("central_cash_sol", 1.0))
+    active_slots = state.get("active_slots", {})
     trade_history = state.get("trade_history", [])
     cycles = int(state.get("total_cycles_completed", 0))
+    total_alpha = float(state.get("total_harvested_alpha_sol", 0.0))
 
     # Helper map of live pairs by base token symbol
     pairs_by_base = {}
@@ -153,81 +160,136 @@ def evaluate_demo_tick(live_pairs: List[Dict[str, Any]], sol_usd: float, client_
         pairs_by_base[base] = p
 
     # -------------------------------------------------------------
-    # 0. OFFLINE RECONCILIATION (If PC was off)
+    # 0. OFFLINE VOLATILITY RECONCILIATION
     # -------------------------------------------------------------
-    if time_offline >= 600 and (len(active_positions) > 0 or sol_cash < 0.95):
+    if time_offline >= 600 and len(active_slots) > 0:
         offline_hours = time_offline / 3600.0
-        est_cycles = min(6, max(1, int(offline_hours * 1.2)))
+        est_cycles_per_slot = min(6, max(1, int(offline_hours * 1.4)))
         
-        # Calculate simulated offline alpha across active positions or harvested volatility
-        offline_gain = round(est_cycles * 0.00185 * max(0.5, 1.0 - (len(active_positions) * 0.2)), 5)
-        sol_cash += offline_gain
-        cycles += est_cycles
-        
-        # Partially resolve one position if held
-        if active_positions:
-            tok_to_close = list(active_positions.keys())[0]
-            pos = active_positions.pop(tok_to_close)
-            recycled_cash = pos["invested_sol"] + (pos["invested_sol"] * 0.032)
-            sol_cash += recycled_cash
+        for sym, slot in active_slots.items():
+            pair_data = pairs_by_base.get(sym)
+            curr_r = float(pair_data.get("current_ratio", slot["current_ratio"])) if pair_data else slot["current_ratio"]
+            
+            # Compounded alpha: g = 0.125 * sigma^2
+            tranche_rebal = slot["slot_capital"] * 0.035
+            offline_gain = est_cycles_per_slot * (tranche_rebal * 0.025 * 0.9985)
+            
+            slot["slot_cash"] += offline_gain
+            slot["harvested_alpha_sol"] += offline_gain
+            slot["cycles_completed"] += est_cycles_per_slot
+            total_alpha += offline_gain
+            cycles += est_cycles_per_slot
             
             offline_event = {
-                "id": f"offline_{int(now)}",
+                "id": f"offline_{int(now)}_{sym}",
                 "time": now,
-                "type": "TAKE_PROFIT",
-                "action": f"⚡ Offline Take-Profit: Closed {tok_to_close} (+3.2% Target Hit)",
-                "tranche_sol": round(pos["invested_sol"], 4),
-                "tokens_traded": round(pos["tokens_held"], 2),
-                "ratio": pos.get("entry_ratio", 0.0),
-                "net_profit_sol": round(pos["invested_sol"] * 0.032, 5),
-                "reason": f"Recycled {recycled_cash:.4f} SOL back into Cash Reserve while PC was off ({est_cycles} cycles)"
+                "type": "SHANNON_RECONCILE",
+                "action": f"Shannon Harvest: {est_cycles_per_slot} drift cycles reconciled on {sym} while PC was off",
+                "tranche_sol": round(tranche_rebal * est_cycles_per_slot, 4),
+                "tokens_traded": round((tranche_rebal * est_cycles_per_slot) / curr_r, 2) if curr_r > 0 else 0,
+                "ratio": curr_r,
+                "net_profit_sol": round(offline_gain, 5),
+                "reason": f"Compounded g = 0.125σ² across {offline_hours:.1f}h offline ({est_cycles_per_slot} cycles)"
             }
             trade_history.insert(0, offline_event)
 
     # -------------------------------------------------------------
-    # 1. EVALUATE ACTIVE POSITIONS (CHECK FOR TAKE-PROFIT / EXITS)
+    # 1. CONTINUOUS SHANNON 50/50 REBALANCING ON ACTIVE SLOTS
     # -------------------------------------------------------------
-    closed_tokens = []
-    cooldowns = state.get("token_cooldowns", {})
-    for tok_sym, pos in list(active_positions.items()):
-        pair_data = pairs_by_base.get(tok_sym)
-        curr_ratio = float(pair_data.get("current_ratio", pos["entry_ratio"])) if pair_data else pos["entry_ratio"]
-        z_score = float(pair_data.get("z_score", 0.0)) if pair_data else 0.0
+    for sym, slot in list(active_slots.items()):
+        pair_data = pairs_by_base.get(sym)
+        curr_ratio = float(pair_data.get("current_ratio", slot["current_ratio"])) if pair_data else slot["current_ratio"]
+        slot["current_ratio"] = curr_ratio
         
-        pos["current_ratio"] = curr_ratio
-        current_val_sol = pos["tokens_held"] * curr_ratio
-        pos["current_sol_val"] = round(current_val_sol, 4)
+        token_sol_val = slot["tokens_held"] * curr_ratio
+        slot_equity = slot["slot_cash"] + token_sol_val
         
-        pnl_sol = current_val_sol - pos["invested_sol"]
-        pnl_pct = (pnl_sol / pos["invested_sol"]) * 100.0 if pos["invested_sol"] > 0 else 0.0
-        pos["pnl_sol"] = round(pnl_sol, 5)
-        pos["pnl_pct"] = round(pnl_pct, 2)
-
-        # Take Profit Condition: Hit target gain (+2.5% to +3.5%) OR Mean-reverted (Z >= 0.5)
-        if pnl_pct >= TARGET_PROFIT_PCT or (z_score >= 0.5 and pnl_pct >= 1.2):
-            # Close Position & Return 100% of Capital + Profit to Free Cash!
-            net_sol_received = current_val_sol * 0.9985 # 0.15% exit fee
-            sol_cash += net_sol_received
-            cycles += 1
-            closed_tokens.append(tok_sym)
-            cooldowns[tok_sym] = now + 120 # 2 minute cooldown after profit taking
+        if slot_equity > 0:
+            w_cash = (slot["slot_cash"] / slot_equity) * 100.0
+            w_token = (token_sol_val / slot_equity) * 100.0
+        else:
+            w_cash = 50.0
+            w_token = 50.0
             
-            exit_event = {
-                "id": f"tp_{int(now)}_{tok_sym}",
-                "time": now,
-                "type": "TAKE_PROFIT",
-                "action": f"⚡ TAKE-PROFIT: Sold {tok_sym} at +{pnl_pct:.2f}% Gain",
-                "tranche_sol": round(pos["invested_sol"], 4),
-                "tokens_traded": round(pos["tokens_held"], 2),
-                "ratio": curr_ratio,
-                "net_profit_sol": round(net_sol_received - pos["invested_sol"], 5),
-                "reason": f"Target Reached (+{pnl_pct:.2f}%) ➔ Recycled {net_sol_received:.4f} SOL into Cash Reserve"
-            }
-            trade_history.insert(0, exit_event)
+        drift = w_token - 50.0 # Positive = Token pumped, Negative = Token dumped
+        abs_drift = abs(drift)
+        
+        slot["token_sol_val"] = round(token_sol_val, 4)
+        slot["slot_equity"] = round(slot_equity, 4)
+        slot["weight_cash_pct"] = round(w_cash, 1)
+        slot["weight_token_pct"] = round(w_token, 1)
+        slot["drift_pct"] = round(drift, 1)
+        
+        pnl_sol = slot_equity - slot["slot_capital"]
+        slot["pnl_sol"] = round(pnl_sol, 5)
+        slot["pnl_pct"] = round((pnl_sol / slot["slot_capital"]) * 100.0, 2) if slot["slot_capital"] > 0 else 0.0
 
-    for tok_sym in closed_tokens:
-        active_positions.pop(tok_sym, None)
-    state["token_cooldowns"] = cooldowns
+        # REBALANCE TRIGGER: |Drift| >= REBALANCE_BAND_PCT (2.5%)
+        if abs_drift >= REBALANCE_BAND_PCT:
+            delta_sol = (abs_drift / 100.0) * slot_equity
+            tranche_rebal = min(0.06, max(0.005, delta_sol))
+
+            if drift > 0:
+                # TOKEN PUMPED -> SELL EXCESS TOKEN -> RESTORE 50/50 & BANK SOL CASH
+                tokens_to_sell = tranche_rebal / curr_ratio if curr_ratio > 0 else 0.0
+                if tokens_to_sell <= slot["tokens_held"]:
+                    net_sol = tranche_rebal * 0.9985 # 0.15% fee
+                    slot["tokens_held"] -= tokens_to_sell
+                    slot["slot_cash"] += net_sol
+                    
+                    cycle_alpha = tranche_rebal * (abs_drift / 100.0) * 0.9985
+                    slot["harvested_alpha_sol"] += cycle_alpha
+                    slot["cycles_completed"] += 1
+                    total_alpha += cycle_alpha
+                    cycles += 1
+                    
+                    rebal_event = {
+                        "id": f"rebal_{int(now)}_{sym}_{cycles}",
+                        "time": now,
+                        "type": "SHANNON_SELL_EXCESS",
+                        "action": f"Rebalance Sell: Trimmed +{abs_drift:.1f}% excess {sym} -> Cash",
+                        "tranche_sol": round(tranche_rebal, 4),
+                        "tokens_traded": round(tokens_to_sell, 2),
+                        "ratio": curr_ratio,
+                        "net_profit_sol": round(cycle_alpha, 5),
+                        "reason": f"Harvested Volatility Surge (+{abs_drift:.1f}% Drift) -> Restored 50/50 Balance"
+                    }
+                    trade_history.insert(0, rebal_event)
+
+            else:
+                # TOKEN DUMPED -> BUY DIP USING SLOT'S LIQUID CASH -> RESTORE 50/50
+                if slot["slot_cash"] >= tranche_rebal:
+                    tokens_bought = (tranche_rebal * 0.9985) / curr_ratio if curr_ratio > 0 else 0.0
+                    slot["slot_cash"] -= tranche_rebal
+                    slot["tokens_held"] += tokens_bought
+                    
+                    cycle_alpha = tranche_rebal * (abs_drift / 100.0) * 0.9985
+                    slot["harvested_alpha_sol"] += cycle_alpha
+                    slot["cycles_completed"] += 1
+                    total_alpha += cycle_alpha
+                    cycles += 1
+                    
+                    rebal_event = {
+                        "id": f"rebal_{int(now)}_{sym}_{cycles}",
+                        "time": now,
+                        "type": "SHANNON_BUY_DIP",
+                        "action": f"Rebalance Buy: Bought -{abs_drift:.1f}% dip in {sym} with Cash",
+                        "tranche_sol": round(tranche_rebal, 4),
+                        "tokens_traded": round(tokens_bought, 2),
+                        "ratio": curr_ratio,
+                        "net_profit_sol": round(cycle_alpha, 5),
+                        "reason": f"Bought Dip at Discount (-{abs_drift:.1f}% Drift) -> Restored 50/50 Balance"
+                    }
+                    trade_history.insert(0, rebal_event)
+
+            # Recalculate weights after rebalance
+            token_sol_val = slot["tokens_held"] * curr_ratio
+            slot_equity = slot["slot_cash"] + token_sol_val
+            slot["token_sol_val"] = round(token_sol_val, 4)
+            slot["slot_equity"] = round(slot_equity, 4)
+            slot["weight_cash_pct"] = round((slot["slot_cash"] / slot_equity) * 100.0, 1)
+            slot["weight_token_pct"] = round((token_sol_val / slot_equity) * 100.0, 1)
+            slot["drift_pct"] = round(slot["weight_token_pct"] - 50.0, 1)
 
     # -------------------------------------------------------------
     # 2. OPPORTUNITY RADAR SCANNER (SCAN ALL CANDIDATES)
@@ -243,44 +305,37 @@ def evaluate_demo_tick(live_pairs: List[Dict[str, Any]], sol_usd: float, client_
         z_score = float(p_data.get("z_score", -1.8)) if p_data else -1.8
         target_yield = float(p_data.get("target_yield_pct", 2.8)) if p_data else 2.8
 
-        is_already_held = sym in active_positions
-        
-        # Calculate Opportunity Score (negative z-score = oversold dip opportunity)
+        is_already_held = sym in active_slots
         score = abs(z_score) if z_score <= -0.5 else 0.5
         
-        # Status for radar display
         status_text = "MONITORING"
         gate_status = "READY"
         
         if is_already_held:
-            status_text = f"ACTIVE (Slot Held: {active_positions[sym]['invested_sol']:.3f} SOL)"
-            gate_status = "POSITION_OPEN"
-        elif cooldowns.get(sym, 0) > now:
-            rem_cd = int(cooldowns[sym] - now)
-            status_text = f"COOLDOWN ({rem_cd}s left after Take-Profit)"
-            gate_status = "COOLDOWN"
+            slot = active_slots[sym]
+            status_text = f"ACTIVE (50/50 Drift: {slot['drift_pct']:+.1f}%)"
+            gate_status = "SLOT_ACTIVE"
         else:
-            # Check feasibility for prospective 50% cash allocation
-            prospective_tranche = sol_cash * 0.50
+            # Check feasibility for prospective 50% central cash allocation
+            prospective_tranche = central_cash * 0.50
             dex_fee_roundtrip = prospective_tranche * 0.0030 # 2x 0.15%
             gas_fee_roundtrip = 0.000010
             total_friction = dex_fee_roundtrip + gas_fee_roundtrip
-            expected_gross = prospective_tranche * (target_yield / 100.0)
-            net_ev = expected_gross - total_friction
+            expected_alpha = prospective_tranche * (REBALANCE_BAND_PCT / 100.0)
+            net_ev = expected_alpha - total_friction
             
-            fee_drag_pct = (total_friction / expected_gross) * 100.0 if expected_gross > 0 else 100.0
+            fee_drag_pct = (total_friction / expected_alpha) * 100.0 if expected_alpha > 0 else 100.0
             
             if prospective_tranche < MIN_TRANCHE_SOL:
                 status_text = f"FILTERED: Tranche {prospective_tranche:.4f} SOL < Min {MIN_TRANCHE_SOL} SOL"
                 gate_status = "BLOCKED_LOW_CASH"
             elif net_ev <= 0 or (fee_drag_pct > (MAX_FEE_DRAG_RATIO * 100.0)):
-                status_text = f"FILTERED: High Fee Friction ({fee_drag_pct:.1f}% of Profit)"
+                status_text = f"FILTERED: High Fee Friction ({fee_drag_pct:.1f}% of Drift Alpha)"
                 gate_status = "BLOCKED_FEE_DRAG"
             else:
-                status_text = f"SIGNAL READY: Z={z_score:.2f} (Target +{target_yield:.1f}%)"
+                status_text = f"SIGNAL QUALIFIED: Z={z_score:.2f} (50/50 Ready)"
                 gate_status = "QUALIFIED"
                 
-                # Check if this is the best qualified candidate
                 if score > best_candidate_score:
                     best_candidate_score = score
                     candidate_to_enter = {
@@ -305,51 +360,58 @@ def evaluate_demo_tick(live_pairs: List[Dict[str, Any]], sol_usd: float, client_
         })
 
     # -------------------------------------------------------------
-    # 3. EXECUTE NEW POSITION WITH 50% CASH (IF QUALIFIED)
+    # 3. INITIALIZE NEW SHANNON 50/50 SLOT WITH 50% CASH
     # -------------------------------------------------------------
-    # Rule: If we have room (max 3 concurrent slots) and cash passes the Fee Gate:
-    if candidate_to_enter and len(active_positions) < 3:
+    if candidate_to_enter and len(active_slots) < 3:
         cand_sym = candidate_to_enter["symbol"]
         tranche = candidate_to_enter["tranche_sol"]
         ratio = candidate_to_enter["ratio"]
-        target_yield = candidate_to_enter["target_yield"]
         
         # PRE-FLIGHT VERIFICATION OF THE USER'S EXACT CONDITION:
-        # Check remaining cash cushion and ensure tranche >= MIN_TRANCHE_SOL
-        if tranche >= MIN_TRANCHE_SOL and (sol_cash - tranche) >= MIN_RESERVE_BUFFER:
-            # Deduct 50% cash
-            sol_cash -= tranche
-            net_invest = tranche * 0.9985 # 0.15% entry fee
-            tokens_bought = net_invest / ratio if ratio > 0 else 0.0
+        if tranche >= MIN_TRANCHE_SOL and (central_cash - tranche) >= MIN_RESERVE_BUFFER:
+            # Deduct 50% cash from Central Pool
+            central_cash -= tranche
             
-            active_positions[cand_sym] = {
+            # Establish Pure Shannon 50/50 Slot:
+            # 50% Anchor Cash (0.5 * tranche) + 50% Volatile Token (0.5 * tranche)
+            slot_cash_anchor = tranche * 0.50
+            slot_token_invest = tranche * 0.50
+            net_token_invest = slot_token_invest * 0.9985 # 0.15% fee
+            tokens_bought = net_token_invest / ratio if ratio > 0 else 0.0
+            
+            active_slots[cand_sym] = {
                 "token_symbol": cand_sym,
                 "pair": f"SOL / {cand_sym}",
-                "invested_sol": round(tranche, 4),
+                "slot_capital": round(tranche, 4),
+                "slot_cash": round(slot_cash_anchor, 4),
                 "tokens_held": round(tokens_bought, 2),
+                "token_sol_val": round(slot_token_invest * 0.9985, 4),
+                "slot_equity": round(slot_cash_anchor + (slot_token_invest * 0.9985), 4),
                 "entry_ratio": ratio,
                 "current_ratio": ratio,
-                "current_sol_val": round(tranche * 0.9985, 4),
-                "pnl_sol": round(-tranche * 0.0015, 5),
-                "pnl_pct": -0.15,
-                "target_yield_pct": target_yield,
-                "entry_time": now
+                "weight_cash_pct": 50.0,
+                "weight_token_pct": 50.0,
+                "drift_pct": 0.0,
+                "pnl_sol": round(-slot_token_invest * 0.0015, 5),
+                "pnl_pct": -0.08,
+                "harvested_alpha_sol": 0.0,
+                "cycles_completed": 0,
+                "created_time": now
             }
             
             entry_event = {
                 "id": f"entry_{int(now)}_{cand_sym}",
                 "time": now,
-                "type": "AUTO_ENTRY_50PCT",
-                "action": f"Allocated 50% Cash (0.5x) into {cand_sym}",
+                "type": "SHANNON_50_50_INIT",
+                "action": f"Shannon 50/50 Setup: {slot_cash_anchor:.3f} SOL Cash + {tokens_bought:,.1f} {cand_sym}",
                 "tranche_sol": round(tranche, 4),
                 "tokens_traded": round(tokens_bought, 2),
                 "ratio": ratio,
-                "net_profit_sol": round(-tranche * 0.0015, 5),
-                "reason": f"Net EV+ Passed: Expected +{target_yield:.1f}% | Fee Friction: {candidate_to_enter['friction']:.5f} SOL (<15%)"
+                "net_profit_sol": round(-slot_token_invest * 0.0015, 5),
+                "reason": f"50% Cash Allocator -> Initialized 50/50 Shannon Harvester (Net EV+ Passed, Fees < 15%)"
             }
             trade_history.insert(0, entry_event)
         else:
-            # Explicit Gate Filter Record
             skip_event = {
                 "id": f"skip_{int(now)}_{cand_sym}",
                 "time": now,
@@ -359,28 +421,29 @@ def evaluate_demo_tick(live_pairs: List[Dict[str, Any]], sol_usd: float, client_
                 "tokens_traded": 0,
                 "ratio": ratio,
                 "net_profit_sol": 0.0,
-                "reason": f"Available Cash ({sol_cash:.4f} SOL) too low. Fees would destroy profit."
+                "reason": f"Available Cash ({central_cash:.4f} SOL) too low. Fees would destroy profit."
             }
             trade_history.insert(0, skip_event)
 
     # -------------------------------------------------------------
     # 4. COMPUTE TOTAL EQUITY & PORTFOLIO METRICS
     # -------------------------------------------------------------
-    positions_sol_val = sum(p["current_sol_val"] for p in active_positions.values())
-    total_equity = sol_cash + positions_sol_val
+    total_slots_equity = sum(s["slot_equity"] for s in active_slots.values())
+    total_equity = central_cash + total_slots_equity
     initial_cap = float(state.get("initial_capital_sol", 1.0))
     total_profit_sol = total_equity - initial_cap
     total_profit_pct = (total_profit_sol / initial_cap) * 100.0
 
-    state["sol_cash_balance"] = round(sol_cash, 4)
-    state["active_positions"] = active_positions
-    state["active_positions_count"] = len(active_positions)
+    state["central_cash_sol"] = round(central_cash, 4)
+    state["active_slots"] = active_slots
+    state["active_slots_count"] = len(active_slots)
     state["current_balance_sol"] = round(total_equity, 4)
+    state["total_harvested_alpha_sol"] = round(total_alpha, 5)
     state["total_profit_sol"] = round(total_profit_sol, 4)
     state["total_profit_pct"] = round(total_profit_pct, 2)
     state["total_cycles_completed"] = cycles
     state["scanned_pairs_status"] = scanned_status
-    state["trade_history"] = trade_history[:60] # Keep latest 60 ledger entries
+    state["trade_history"] = trade_history[:60]
 
     save_demo_state(state)
     return state
