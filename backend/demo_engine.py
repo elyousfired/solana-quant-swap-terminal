@@ -66,14 +66,17 @@ def save_demo_state(state: Dict[str, Any]):
     except Exception as e:
         print("Error saving demo state:", e)
 
-def reset_demo_state() -> Dict[str, Any]:
+def reset_demo_state(client_state: Dict[str, Any] = None) -> Dict[str, Any]:
     state = get_initial_state()
     state["is_running"] = True # Start running immediately upon reset
     save_demo_state(state)
     return state
 
-def toggle_demo_state(running: bool = None) -> Dict[str, Any]:
-    state = load_demo_state()
+def toggle_demo_state(running: bool = None, client_state: Dict[str, Any] = None) -> Dict[str, Any]:
+    if client_state and isinstance(client_state, dict) and client_state.get("initial_capital_sol"):
+        state = client_state
+    else:
+        state = load_demo_state()
     if running is None:
         state["is_running"] = not state.get("is_running", False)
     else:
@@ -90,18 +93,25 @@ def sync_demo_state(client_state: Dict[str, Any]) -> Dict[str, Any]:
         return client_state
     return server_state
 
-def evaluate_demo_tick(live_pairs: List[Dict[str, Any]], sol_usd: float) -> Dict[str, Any]:
+def evaluate_demo_tick(live_pairs: List[Dict[str, Any]], sol_usd: float, client_state: Dict[str, Any] = None) -> Dict[str, Any]:
     """
     Main evaluation tick:
     1. Reconciles open positions against live ratios (closes if mean-reversion target reached).
     2. Opens new positions if active positions < 2 and a pair meets Z <= -2.0 sigma.
-    3. Updates balances, PnL, and persists state.
+    3. Handles offline catch-up if user was away / PC was off.
+    4. Updates balances, PnL, and persists state.
     """
-    state = load_demo_state()
+    if client_state and isinstance(client_state, dict) and client_state.get("initial_capital_sol"):
+        state = client_state
+    else:
+        state = load_demo_state()
+
     if not state.get("is_running", False):
         return state
 
     now = time.time()
+    last_tick = float(state.get("last_tick_time", now))
+    time_offline = max(0.0, now - last_tick)
     state["last_tick_time"] = now
 
     active_positions = state.get("active_positions", [])
@@ -154,6 +164,10 @@ def evaluate_demo_tick(live_pairs: List[Dict[str, Any]], sol_usd: float) -> Dict
         elif holding_hours >= 24.0 and gross_pnl_pct >= 2.5:
             should_exit = True
             exit_reason = f"Time Horizon Reached ({holding_hours:.1f}h, +{gross_pnl_pct:.2f}%)"
+        elif time_offline >= 300 and holding_hours >= 0.5 and (gross_pnl_pct >= 2.0 or z_score >= -0.80):
+            # Offline Catch-up: Position matured during offline period while PC was off
+            should_exit = True
+            exit_reason = f"Offline Mean Reversion (+{gross_pnl_pct:.2f}% while away)"
 
         if should_exit:
             # Deduct 0.20% DEX fee on exit

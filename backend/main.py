@@ -10,6 +10,7 @@ import urllib.parse
 import json
 import time
 import numpy as np
+from typing import Optional, Dict, Any
 from fastapi import FastAPI, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -657,53 +658,61 @@ from backend.demo_engine import (
     evaluate_demo_tick
 )
 
+class DemoActionRequest(BaseModel):
+    state: Optional[Dict[str, Any]] = None
+    running: Optional[bool] = None
+
 @app.get("/api/demo/state")
 def get_demo_state_api():
     """Returns current paper trading demo status and portfolio balance instantly."""
     return load_demo_state()
 
 @app.post("/api/demo/toggle")
-def toggle_demo_api(running: bool = Query(None)):
-    """Toggle demo bot execution (Start / Pause)."""
-    state = toggle_demo_state(running)
+def toggle_demo_api(req: Optional[DemoActionRequest] = None, running: Optional[bool] = Query(None)):
+    """Toggle demo bot execution (Start / Pause). Accepts optional client_state."""
+    target_running = req.running if (req and req.running is not None) else running
+    client_state = req.state if req else None
+    state = toggle_demo_state(target_running, client_state)
     if state.get("is_running", False):
         try:
             pairs_data = get_pairs_rotation()
             sol_p = fetch_jup_prices([TOKEN_MINTS["SOL"]]).get(TOKEN_MINTS["SOL"], {}).get("usdPrice", 95.0)
-            state = evaluate_demo_tick(pairs_data, sol_p)
+            state = evaluate_demo_tick(pairs_data, sol_p, client_state=state)
         except Exception as e:
             print("Error ticking on toggle:", e)
     return state
 
 @app.post("/api/demo/reset")
-def reset_demo_api():
+def reset_demo_api(req: Optional[DemoActionRequest] = None):
     """Reset paper trading history and restart fresh with 1.0 SOL."""
-    state = reset_demo_state()
+    client_state = req.state if req else None
+    state = reset_demo_state(client_state)
     try:
         pairs_data = get_pairs_rotation()
         sol_p = fetch_jup_prices([TOKEN_MINTS["SOL"]]).get(TOKEN_MINTS["SOL"], {}).get("usdPrice", 95.0)
-        state = evaluate_demo_tick(pairs_data, sol_p)
+        state = evaluate_demo_tick(pairs_data, sol_p, client_state=state)
     except Exception as e:
         print("Error ticking on reset:", e)
     return state
 
 @app.post("/api/demo/tick")
-def demo_tick_api():
+def demo_tick_api(req: Optional[DemoActionRequest] = None):
     """Tick evaluation: checks open positions for exit and oversold pairs for entry."""
+    client_state = req.state if req else None
     try:
         pairs_data = get_pairs_rotation()
         sol_p = fetch_jup_prices([TOKEN_MINTS["SOL"]]).get(TOKEN_MINTS["SOL"], {}).get("usdPrice", 95.0)
-        return evaluate_demo_tick(pairs_data, sol_p)
+        return evaluate_demo_tick(pairs_data, sol_p, client_state=client_state)
     except Exception as e:
-        return {"error": str(e), "state": load_demo_state()}
-
-class DemoSyncRequest(BaseModel):
-    state: dict
+        curr_state = client_state or load_demo_state()
+        return {"error": str(e), "state": curr_state}
 
 @app.post("/api/demo/sync")
-def demo_sync_api(req: DemoSyncRequest):
+def demo_sync_api(req: DemoActionRequest):
     """Syncs state from browser localStorage if server was cold-started."""
-    return sync_demo_state(req.state)
+    if req and req.state:
+        return sync_demo_state(req.state)
+    return load_demo_state()
 
 # Mount static files dynamically for local execution
 current_dir = os.path.dirname(os.path.abspath(__file__))

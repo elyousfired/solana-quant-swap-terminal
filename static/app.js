@@ -567,7 +567,6 @@ function triggerSimulateSwap(inSym, outSym, amount) {
 // Continuous Live Polling
 function pollActiveTab() {
   loadTickers();
-  loadDemoState();
   if (currentTab === 'lst') loadLstDepeg();
   else if (currentTab === 'pairs' || currentTab === 'shannon') {
     loadShannon();
@@ -583,27 +582,28 @@ let demoState = null;
 
 async function loadDemoState() {
   try {
-    // If we have saved state in localStorage, sync it first if server is fresh
+    // 1. Check local persistent storage first (immunizes against Vercel cold restarts)
     const localSaved = localStorage.getItem('solana_demo_state');
-    if (localSaved && !demoState) {
+    if (localSaved) {
       try {
-        const parsed = JSON.parse(localSaved);
-        await fetch('/api/demo/sync', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ state: parsed })
-        });
-      } catch (e) {}
+        demoState = JSON.parse(localSaved);
+        renderDemoUI(demoState);
+        // If it was running, trigger immediate tick to reconcile offline gap
+        if (demoState && demoState.is_running) {
+          tickDemoBot();
+        }
+        return;
+      } catch (e) {
+        console.error('Error parsing localStorage demoState:', e);
+      }
     }
 
+    // 2. Fallback: fetch default seed from server
     const res = await fetch('/api/demo/state');
     demoState = await res.json();
-    
-    // Save to localStorage for client-side cloud persistence
     if (demoState && demoState.initial_capital_sol) {
       localStorage.setItem('solana_demo_state', JSON.stringify(demoState));
     }
-
     renderDemoUI(demoState);
   } catch (err) {
     console.error('Error loading demo state:', err);
@@ -782,12 +782,39 @@ function renderDemoUI(state) {
 
 async function toggleDemoBot() {
   try {
-    const res = await fetch('/api/demo/toggle', { method: 'POST' });
-    demoState = await res.json();
-    if (demoState && demoState.initial_capital_sol) {
-      localStorage.setItem('solana_demo_state', JSON.stringify(demoState));
+    if (!demoState) {
+      demoState = {
+        is_running: false,
+        initial_capital_sol: 1.0,
+        current_balance_sol: 1.0,
+        available_sol: 1.0,
+        total_profit_sol: 0.0,
+        total_profit_pct: 0.0,
+        max_concurrent_positions: 2,
+        active_positions: [],
+        trade_history: [],
+        last_tick_time: Date.now() / 1000,
+        created_at: Date.now() / 1000
+      };
     }
+
+    const nextRunning = !demoState.is_running;
+    demoState.is_running = nextRunning;
+    demoState.last_tick_time = Date.now() / 1000;
+    localStorage.setItem('solana_demo_state', JSON.stringify(demoState));
     renderDemoUI(demoState);
+
+    const res = await fetch('/api/demo/toggle', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ state: demoState, running: nextRunning })
+    });
+    const updated = await res.json();
+    if (updated && updated.initial_capital_sol) {
+      demoState = updated;
+      localStorage.setItem('solana_demo_state', JSON.stringify(demoState));
+      renderDemoUI(demoState);
+    }
   } catch (err) {
     console.error('Error toggling demo bot:', err);
   }
@@ -796,11 +823,34 @@ async function toggleDemoBot() {
 async function confirmResetDemo() {
   if (confirm('هل أنت متأكد أنك باغي تمسح الـ Historique وتبدا من اللول بـ 1.0 SOL؟\n\nAre you sure you want to reset and restart fresh with 1.000 SOL?')) {
     try {
-      const res = await fetch('/api/demo/reset', { method: 'POST' });
-      demoState = await res.json();
-      localStorage.removeItem('solana_demo_state');
+      const cleanState = {
+        is_running: true,
+        initial_capital_sol: 1.0,
+        current_balance_sol: 1.0,
+        available_sol: 1.0,
+        total_profit_sol: 0.0,
+        total_profit_pct: 0.0,
+        max_concurrent_positions: 2,
+        active_positions: [],
+        trade_history: [],
+        last_tick_time: Date.now() / 1000,
+        created_at: Date.now() / 1000
+      };
+      demoState = cleanState;
       localStorage.setItem('solana_demo_state', JSON.stringify(demoState));
       renderDemoUI(demoState);
+
+      const res = await fetch('/api/demo/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state: cleanState })
+      });
+      const updated = await res.json();
+      if (updated && updated.initial_capital_sol) {
+        demoState = updated;
+        localStorage.setItem('solana_demo_state', JSON.stringify(demoState));
+        renderDemoUI(demoState);
+      }
     } catch (err) {
       console.error('Error resetting demo:', err);
     }
@@ -810,13 +860,20 @@ async function confirmResetDemo() {
 async function tickDemoBot() {
   if (demoState && demoState.is_running) {
     try {
-      const res = await fetch('/api/demo/tick', { method: 'POST' });
-      demoState = await res.json();
-      if (demoState && demoState.initial_capital_sol) {
+      const res = await fetch('/api/demo/tick', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state: demoState })
+      });
+      const updated = await res.json();
+      if (updated && updated.initial_capital_sol) {
+        demoState = updated;
         localStorage.setItem('solana_demo_state', JSON.stringify(demoState));
+        renderDemoUI(demoState);
       }
-      renderDemoUI(demoState);
-    } catch (e) {}
+    } catch (e) {
+      console.error('Error ticking demo bot:', e);
+    }
   }
 }
 
@@ -829,6 +886,6 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // Real-time live auto-refresh every 2.5 seconds
   setInterval(pollActiveTab, 2500);
-  // Auto-tick demo bot every 8 seconds
-  setInterval(tickDemoBot, 8000);
+  // Auto-tick demo bot every 5 seconds
+  setInterval(tickDemoBot, 5000);
 });

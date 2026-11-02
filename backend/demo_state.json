@@ -1,10 +1,10 @@
 {
   "is_running": true,
   "initial_capital_sol": 1.0,
-  "current_balance_sol": 1.0,
-  "available_sol": 0.55,
-  "total_profit_sol": 0.0,
-  "total_profit_pct": 0.0,
+  "current_balance_sol": 0.9975,
+  "available_sol": 0.1,
+  "total_profit_sol": -0.0025,
+  "total_profit_pct": -0.25,
   "max_concurrent_positions": 2,
   "active_positions": [
     {
@@ -16,16 +16,33 @@
       "sol_invested": 0.45,
       "tokens_held": 1307.1277,
       "entry_ratio": 0.00034374987509854687,
-      "current_ratio": 0.00034374987509854687,
+      "current_ratio": 0.00034289065909870025,
       "entry_z_score": -2.72,
-      "current_z_score": -2.72,
+      "current_z_score": -2.79,
       "target_yield_pct": 5.96,
+      "unrealized_pnl_pct": -0.25,
+      "current_sol_value": 0.4482,
+      "status": "OPEN"
+    },
+    {
+      "id": "trade_1793582412_RAY",
+      "pair": "SOL / RAY",
+      "base_token": "RAY",
+      "quote_token": "SOL",
+      "entry_time": 1793582412.78766,
+      "sol_invested": 0.45,
+      "tokens_held": 26.2541,
+      "entry_ratio": 0.017114461137729103,
+      "current_ratio": 0.01711484700802473,
+      "entry_z_score": -2.08,
+      "current_z_score": -2.08,
+      "target_yield_pct": 4.98,
       "unrealized_pnl_pct": 0.0,
-      "current_sol_value": 0.45,
+      "current_sol_value": 0.4493,
       "status": "OPEN"
     }
   ],
   "trade_history": [],
-  "last_tick_time": 1793570694.0047493,
+  "last_tick_time": 1793582419.7536771,
   "created_at": 1793570692.2130227
 }
