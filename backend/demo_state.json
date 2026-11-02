@@ -1,83 +1,29 @@
 {
-  "strategy": "pure_shannon_multi_hunter",
+  "strategy": "shannon_6basket_threshold_v1",
   "is_running": true,
   "initial_capital_sol": 1.0,
-  "current_balance_sol": 1.015,
-  "central_cash_sol": 0.5,
-  "active_slots": {
-    "KMNO": {
-      "token_symbol": "KMNO",
-      "pair": "SOL / KMNO",
-      "slot_capital": 0.5,
-      "slot_cash": 0.25747015802011836,
-      "tokens_held": 721.3001737455437,
-      "token_sol_val": 0.2575,
-      "slot_equity": 0.515,
-      "entry_ratio": 0.00034,
-      "current_ratio": 0.00035700000000000006,
-      "weight_cash_pct": 50.0,
-      "weight_token_pct": 50.0,
-      "drift_pct": 0.0,
-      "pnl_sol": 0.01501,
-      "pnl_pct": 3.0,
-      "harvested_alpha_sol": 0.0014852832945533492,
-      "cycles_completed": 2,
-      "created_time": 1793650930.9283652
-    }
-  },
-  "active_slots_count": 1,
-  "total_harvested_alpha_sol": 0.00149,
-  "total_profit_sol": 0.015,
-  "total_profit_pct": 1.5,
-  "total_cycles_completed": 2,
-  "min_tranche_floor_sol": 0.02,
-  "scanned_pairs_status": [
-    {
-      "symbol": "KMNO",
-      "pair": "SOL / KMNO",
-      "current_ratio": 0.00035700000000000006,
-      "z_score": -1.0,
-      "target_yield_pct": 2.5,
-      "is_held": true,
-      "status_text": "ACTIVE (50/50 Drift: +0.0%)",
-      "gate_status": "SLOT_ACTIVE"
-    }
-  ],
-  "trade_history": [
-    {
-      "id": "rebal_1793650930_KMNO_2",
-      "time": 1793650930.9404743,
-      "type": "SHANNON_SELL_EXCESS",
-      "action": "Rebalance Sell: Trimmed +4.4% excess KMNO -> Cash",
-      "tranche_sol": 0.0227,
-      "tokens_traded": 63.5,
-      "ratio": 0.00035700000000000006,
-      "net_profit_sol": 0.001,
-      "reason": "Harvested Volatility Surge (+4.4% Drift) -> Restored 50/50 Balance"
-    },
-    {
-      "id": "rebal_1793650930_KMNO_1",
-      "time": 1793650930.9388893,
-      "type": "SHANNON_BUY_DIP",
-      "action": "Rebalance Buy: Bought -3.2% dip in KMNO with Cash",
-      "tranche_sol": 0.0152,
-      "tokens_traded": 50.61,
-      "ratio": 0.0002992,
-      "net_profit_sol": 0.00049,
-      "reason": "Bought Dip at Discount (-3.2% Drift) -> Restored 50/50 Balance"
-    },
-    {
-      "id": "entry_1793650930_KMNO",
-      "time": 1793650930.9283652,
-      "type": "SHANNON_50_50_INIT",
-      "action": "Shannon 50/50 Setup: 0.250 SOL Cash + 734.2 KMNO",
-      "tranche_sol": 0.5,
-      "tokens_traded": 734.19,
-      "ratio": 0.00034,
-      "net_profit_sol": -0.00038,
-      "reason": "50% Cash Allocator -> Initialized 50/50 Shannon Harvester (Dip Z=-2.50, Fee Drag < 20%)"
-    }
-  ],
-  "last_tick_time": 1793650930.9404743,
-  "created_at": 1793650930.9283652
+  "sol_price_usd": 95.5,
+  "rebalance_band_pct": 2.5,
+  "basket_allocation_sol": 0.16,
+  "gas_reserve_sol": 0.04,
+  "initial_gas_after_init_sol": 0.04,
+  "unallocated_cash_sol": 0.96,
+  "central_cash_sol": 1.0,
+  "total_basket_cash_sol": 0.0,
+  "total_liquid_sol": 1.0,
+  "total_token_val_sol": 0.0,
+  "current_balance_sol": 1.0,
+  "hodl_benchmark_sol": 1.0,
+  "rebalance_surplus_sol": 0.0,
+  "total_harvested_alpha_sol": 0.0,
+  "total_fees_paid_sol": 0.0,
+  "total_profit_sol": 0.0,
+  "total_profit_pct": 0.0,
+  "active_slots": {},
+  "active_slots_count": 0,
+  "total_cycles_completed": 0,
+  "scanned_pairs_status": [],
+  "trade_history": [],
+  "last_tick_time": 1793660973.8799922,
+  "created_at": 1793660973.8799922
 }

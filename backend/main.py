@@ -647,7 +647,7 @@ def simulate_swap(req: SwapSimRequest):
     }
 
 # =============================================================
-# AUTONOMOUS DEMO PAPER TRADING ENGINE (1.0 SOL / MAX 2 SWAPS)
+# AUTONOMOUS 6-BASKET SHANNON 50/50 THRESHOLD ENGINE (1.0 SOL)
 # =============================================================
 from backend.demo_engine import (
     load_demo_state,
@@ -664,8 +664,16 @@ class DemoActionRequest(BaseModel):
 
 @app.get("/api/demo/state")
 def get_demo_state_api():
-    """Returns current paper trading demo status and portfolio balance instantly."""
-    return load_demo_state()
+    """Returns current 6-basket Shannon 50/50 portfolio status, initializing baskets if empty."""
+    state = load_demo_state()
+    if state.get("is_running", False) and not state.get("active_slots"):
+        try:
+            pairs_data = get_pairs_rotation()
+            sol_p = fetch_jup_prices([TOKEN_MINTS["SOL"]]).get(TOKEN_MINTS["SOL"], {}).get("usdPrice", 95.5)
+            state = evaluate_demo_tick(pairs_data, sol_p, client_state=state)
+        except Exception as e:
+            print("Error initializing 6 baskets on state load:", e)
+    return state
 
 @app.post("/api/demo/toggle")
 def toggle_demo_api(req: Optional[DemoActionRequest] = None, running: Optional[bool] = Query(None)):

@@ -576,58 +576,72 @@ function pollActiveTab() {
 }
 
 // =============================================================
-// 7. AUTONOMOUS QUANT DEMO BOT (1.0 SOL / MAX 2 SLOTS)
+// 7. PURE CLAUDE SHANNON 6-BASKET 50/50 THRESHOLD ENGINE (1.0 SOL)
 // =============================================================
+const DEMO_STRATEGY_ID = 'shannon_6basket_threshold_v1';
+const DEMO_STORAGE_KEY = 'solana_shannon_6basket_state_v1';
+const BASKET_ORDER = ['JUP', 'RAY', 'JTO', 'KMNO', 'MET', 'PUMP'];
+
 let demoState = null;
 
 async function loadDemoState() {
   try {
-    // 1. Check local persistent storage first (immunizes against Vercel cold restarts)
-    const localSaved = localStorage.getItem('solana_demo_state');
+    // Purge legacy Zeno/dip-filter cache if present
+    localStorage.removeItem('solana_demo_state');
+
+    const localSaved = localStorage.getItem(DEMO_STORAGE_KEY);
     if (localSaved) {
       try {
         const parsed = JSON.parse(localSaved);
-        if (parsed && parsed.strategy === 'pure_shannon_multi_hunter') {
+        if (
+          parsed &&
+          parsed.strategy === DEMO_STRATEGY_ID &&
+          parsed.active_slots &&
+          Object.keys(parsed.active_slots).length > 0
+        ) {
           demoState = parsed;
           renderDemoUI(demoState);
-          // If it was running, trigger immediate tick to reconcile offline gap
-          if (demoState && demoState.is_running) {
+          if (demoState.is_running) {
             tickDemoBot();
           }
           return;
         }
       } catch (e) {
-        console.error('Error parsing localStorage demoState:', e);
+        console.error('Error parsing saved 6-basket state:', e);
       }
     }
 
-    // 2. Fallback: fetch default seed from server
     const res = await fetch('/api/demo/state');
-    demoState = await res.json();
-    if (demoState && demoState.initial_capital_sol) {
-      localStorage.setItem('solana_demo_state', JSON.stringify(demoState));
+    const serverState = await res.json();
+    if (serverState && serverState.strategy === DEMO_STRATEGY_ID) {
+      demoState = serverState;
+      localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(demoState));
+      renderDemoUI(demoState);
     }
-    renderDemoUI(demoState);
   } catch (err) {
-    console.error('Error loading demo state:', err);
+    console.error('Error loading 6-basket Shannon state:', err);
   }
 }
 
 function renderDemoUI(state) {
   if (!state) return;
 
-  // Status & Buttons
-  const isRunning = state.is_running;
+  const isRunning = Boolean(state.is_running);
+  const bandPct = state.rebalance_band_pct || 2.5;
+  const solUsd = state.sol_price_usd || 95.5;
+
+  // 1. Top Status & Toggle Button
   const statusBadge = document.getElementById('demo-status-badge');
   const toggleBtn = document.getElementById('btn-demo-toggle');
   const toggleLabel = document.getElementById('demo-toggle-label');
   const pulse = document.getElementById('demo-pulse');
+  const gasEl = document.getElementById('demo-gas-reserve');
 
   if (statusBadge) {
     statusBadge.className = isRunning
       ? 'px-3 py-1 rounded-full text-xs font-mono font-bold bg-solana-green/20 text-solana-green border border-solana-green/40'
       : 'px-3 py-1 rounded-full text-xs font-mono font-bold bg-gray-800 text-gray-400 border border-gray-700';
-    statusBadge.innerText = isRunning ? 'ACTIVE (SHANNON HARVEST 24/7)' : 'PAUSED';
+    statusBadge.innerText = isRunning ? 'ACTIVE (6 BASKETS 50/50 LIVE)' : 'PAUSED';
   }
 
   if (toggleBtn && toggleLabel) {
@@ -638,152 +652,206 @@ function renderDemoUI(state) {
   }
 
   if (pulse) {
-    pulse.className = isRunning ? 'w-3 h-3 rounded-full bg-solana-green animate-ping' : 'w-3 h-3 rounded-full bg-gray-600';
+    pulse.className = isRunning
+      ? 'w-3 h-3 rounded-full bg-solana-green animate-ping'
+      : 'w-3 h-3 rounded-full bg-gray-600';
   }
 
-  // KPIs
+  const gasReserve = state.gas_reserve_sol !== undefined ? state.gas_reserve_sol : 0.04;
+  if (gasEl) {
+    gasEl.innerText = `${gasReserve.toFixed(4)} SOL`;
+  }
+
+  // 2. KPI Cards
   const balEl = document.getElementById('demo-kpi-balance');
   const balUsdEl = document.getElementById('demo-kpi-balance-usd');
   const profitEl = document.getElementById('demo-kpi-profit');
   const profitPctEl = document.getElementById('demo-kpi-profit-pct');
   const slotsEl = document.getElementById('demo-kpi-slots');
   const cyclesEl = document.getElementById('demo-kpi-cycles');
+  const surplusEl = document.getElementById('demo-kpi-surplus');
   const liquidSolEl = document.getElementById('demo-kpi-liquid-sol');
   const cashPctEl = document.getElementById('demo-kpi-cash-pct');
 
-  const bal = state.current_balance_sol || 1.0;
+  const bal = state.current_balance_sol !== undefined ? state.current_balance_sol : 1.0;
   const profit = state.total_profit_sol || 0.0;
   const profitPct = state.total_profit_pct || 0.0;
-  const centralCash = state.central_cash_sol !== undefined ? state.central_cash_sol : (state.sol_cash_balance !== undefined ? state.sol_cash_balance : 1.0);
-  const activeSlots = state.active_slots || state.active_positions || {};
+  const totalAlpha = state.total_harvested_alpha_sol || 0.0;
+  const surplus = state.rebalance_surplus_sol || 0.0;
+  const activeSlots = state.active_slots || {};
   const activeCount = Object.keys(activeSlots).length;
   const cycles = state.total_cycles_completed || 0;
-  const totalAlpha = state.total_harvested_alpha_sol || profit;
-  const cashPct = bal > 0 ? (centralCash / bal) * 100.0 : 100.0;
+
+  const totalLiquidSol = state.total_liquid_sol !== undefined
+    ? state.total_liquid_sol
+    : (state.central_cash_sol !== undefined ? state.central_cash_sol : 0.52);
+  const totalTokenSol = state.total_token_val_sol !== undefined
+    ? state.total_token_val_sol
+    : Math.max(0.0, bal - totalLiquidSol);
+
+  const liquidPct = bal > 0 ? (totalLiquidSol / bal) * 100.0 : 52.0;
+  const tokenPct = bal > 0 ? (totalTokenSol / bal) * 100.0 : 48.0;
 
   if (balEl) balEl.innerText = bal.toFixed(4);
-  if (balUsdEl) balUsdEl.innerText = `≈ $${(bal * 95.0).toFixed(2)} USD`;
+  if (balUsdEl) balUsdEl.innerText = `≈ $${(bal * solUsd).toFixed(2)} USD (SOL @ $${solUsd.toFixed(2)})`;
+
   if (profitEl) {
-    profitEl.innerText = `${totalAlpha >= 0 ? '+' : ''}${totalAlpha.toFixed(4)}`;
-    profitEl.className = totalAlpha >= 0 ? 'text-xl font-bold font-mono text-solana-green mt-1 flex items-baseline gap-1.5' : 'text-xl font-bold font-mono text-red-400 mt-1 flex items-baseline gap-1.5';
+    profitEl.innerText = `+${totalAlpha.toFixed(5)}`;
+    profitEl.className = 'text-xl font-bold font-mono text-solana-green mt-1 flex items-baseline gap-1.5';
   }
   if (profitPctEl) {
-    profitPctEl.innerText = `${profitPct >= 0 ? '+' : ''}${profitPct.toFixed(2)}% Net Growth`;
-    profitPctEl.className = profitPct >= 0 ? 'text-[11px] text-solana-green/90 font-mono font-bold block mt-0.5' : 'text-[11px] text-red-400/90 font-mono font-bold block mt-0.5';
+    const sign = profit >= 0 ? '+' : '';
+    profitPctEl.innerText = `Portfolio PnL: ${sign}${profit.toFixed(4)} SOL (${sign}${profitPct.toFixed(2)}%)`;
+    profitPctEl.className = profit >= 0
+      ? 'text-[11px] text-solana-green/90 font-mono font-bold block mt-0.5'
+      : 'text-[11px] text-gray-300 font-mono block mt-0.5';
   }
-  if (slotsEl) slotsEl.innerText = activeCount;
-  if (cyclesEl) cyclesEl.innerText = cycles;
-  if (liquidSolEl) liquidSolEl.innerText = centralCash.toFixed(4);
-  if (cashPctEl) cashPctEl.innerText = `${cashPct.toFixed(1)}% Free Liquid Reserve`;
 
-  // Multi-Asset Capital Allocation Bar
+  if (slotsEl) slotsEl.innerText = `${activeCount} / 6`;
+  if (cyclesEl) cyclesEl.innerText = cycles;
+  if (surplusEl) {
+    const sSign = surplus >= 0 ? '+' : '';
+    surplusEl.innerText = `vs Static 50/50: ${sSign}${surplus.toFixed(5)} SOL`;
+    surplusEl.className = surplus >= 0
+      ? 'text-[11px] text-solana-green font-mono block mt-0.5'
+      : 'text-[11px] text-amber-300 font-mono block mt-0.5';
+  }
+
+  if (liquidSolEl) liquidSolEl.innerText = totalLiquidSol.toFixed(4);
+  if (cashPctEl) {
+    cashPctEl.innerText = `${liquidPct.toFixed(1)}% SOL Cash / ${tokenPct.toFixed(1)}% Tokens`;
+  }
+
+  // 3. Multi-Basket Capital Allocation Bar (Gas + 6 Baskets)
   const allocContainer = document.getElementById('allocation-bar-container');
   const allocLegend = document.getElementById('allocation-legend');
   if (allocContainer && allocLegend) {
-    const COLORS = [
-      { bg: 'bg-solana-purple', text: 'text-solana-purple' },
-      { bg: 'bg-blue-500', text: 'text-blue-400' },
-      { bg: 'bg-amber-400', text: 'text-amber-300' }
-    ];
+    const BASKET_COLORS = {
+      JUP: { bg: 'bg-solana-green', text: 'text-solana-green' },
+      RAY: { bg: 'bg-solana-purple', text: 'text-solana-purple' },
+      JTO: { bg: 'bg-blue-500', text: 'text-blue-400' },
+      KMNO: { bg: 'bg-cyan-400', text: 'text-cyan-300' },
+      MET: { bg: 'bg-amber-400', text: 'text-amber-300' },
+      PUMP: { bg: 'bg-pink-500', text: 'text-pink-400' }
+    };
 
-    let barsHtml = `<div class="bg-solana-green h-3.5 transition-all duration-500" style="width: ${cashPct.toFixed(1)}%"></div>`;
-    let legendHtml = `<span class="flex items-center gap-1.5 text-solana-green"><span class="w-2.5 h-2.5 rounded-full bg-solana-green"></span> Free Cash: ${cashPct.toFixed(1)}% (${centralCash.toFixed(3)} SOL)</span>`;
+    const unalloc = state.unallocated_cash_sol || 0.0;
+    const reservePool = gasReserve + unalloc;
+    const reservePct = bal > 0 ? (reservePool / bal) * 100.0 : 4.0;
 
-    let colorIdx = 0;
-    for (const [sym, slot] of Object.entries(activeSlots)) {
-      const slotVal = slot.slot_equity || slot.current_sol_val || 0.0;
+    let barsHtml = `<div class="bg-gray-500 h-3.5 transition-all duration-500" style="width: ${reservePct.toFixed(2)}%" title="Gas Reserve: ${reservePool.toFixed(4)} SOL"></div>`;
+    let legendHtml = `<span class="flex items-center gap-1 text-gray-300"><span class="w-2 h-2 rounded-full bg-gray-400"></span> Gas: ${reservePool.toFixed(3)} SOL</span>`;
+
+    BASKET_ORDER.forEach(sym => {
+      const slot = activeSlots[sym];
+      if (!slot) return;
+      const slotVal = slot.slot_equity || 0.0;
       const slotPct = bal > 0 ? (slotVal / bal) * 100.0 : 0.0;
-      const c = COLORS[colorIdx % COLORS.length];
-      barsHtml += `<div class="${c.bg} h-3.5 transition-all duration-500" style="width: ${slotPct.toFixed(1)}%"></div>`;
-      legendHtml += `<span class="flex items-center gap-1.5 ${c.text}"><span class="w-2.5 h-2.5 rounded-full ${c.bg}"></span> ${sym} 50/50: ${slotPct.toFixed(1)}% (${slotVal.toFixed(3)} SOL)</span>`;
-      colorIdx++;
-    }
+      const c = BASKET_COLORS[sym] || { bg: 'bg-solana-purple', text: 'text-solana-purple' };
+      barsHtml += `<div class="${c.bg} h-3.5 transition-all duration-500 border-l border-solana-dark/60" style="width: ${slotPct.toFixed(2)}%" title="${sym} 50/50 Basket: ${slotVal.toFixed(4)} SOL"></div>`;
+      legendHtml += `<span class="flex items-center gap-1 ${c.text}"><span class="w-2 h-2 rounded-full ${c.bg}"></span> ${sym}: ${slotVal.toFixed(3)}</span>`;
+    });
 
     allocContainer.innerHTML = barsHtml;
     allocLegend.innerHTML = legendHtml;
   }
 
-  // Active Positions / Pure Shannon 50/50 Slots Grid
+  // 4. 6 Active 50/50 Baskets Grid (3x2 Scale Cards)
   const gridEl = document.getElementById('active-positions-grid');
   const slotsInd = document.getElementById('active-slots-indicator');
   if (slotsInd) {
-    slotsInd.innerText = `${activeCount} Shannon 50/50 engine${activeCount === 1 ? '' : 's'} active (Dynamic Fee Capacity)`;
+    slotsInd.innerText = `${activeCount} / 6 Baskets Active (±${bandPct}% Threshold Drift Band)`;
   }
+
   if (gridEl) {
-    const slotKeys = Object.keys(activeSlots);
-    if (slotKeys.length === 0) {
+    const presentKeys = BASKET_ORDER.filter(sym => activeSlots[sym]);
+    if (presentKeys.length === 0) {
       gridEl.innerHTML = `
-        <div class="col-span-3 py-6 text-center text-gray-500 font-mono text-xs bg-solana-dark/40 border border-solana-border/50 rounded-xl">
-          No active Shannon engines open. 100% of capital is held in Liquid SOL Cash, scanning market for volatile dips.
+        <div class="col-span-3 py-6 text-center text-gray-400 font-mono text-xs bg-solana-dark/40 border border-solana-border/50 rounded-xl">
+          Initializing 6 Pure Shannon 50/50 Baskets (JUP, RAY, JTO, KMNO, MET, PUMP) from live Jupiter feeds...
         </div>
       `;
     } else {
       let cardsHtml = '';
-      slotKeys.forEach(sym => {
+      presentKeys.forEach(sym => {
         const slot = activeSlots[sym];
         const wCash = slot.weight_cash_pct !== undefined ? slot.weight_cash_pct : 50.0;
         const wToken = slot.weight_token_pct !== undefined ? slot.weight_token_pct : 50.0;
         const drift = slot.drift_pct !== undefined ? slot.drift_pct : 0.0;
         const absDrift = Math.abs(drift);
-        const isTrigger = absDrift >= 2.5;
+        const isTrigger = absDrift >= bandPct;
+        const isNear = absDrift >= bandPct * 0.75;
+
+        const slotEquity = slot.slot_equity || 0.16;
+        const cashVal = slot.slot_cash !== undefined ? slot.slot_cash : 0.08;
+        const tokenVal = slot.token_sol_val !== undefined ? slot.token_sol_val : 0.08;
+        const tokensHeld = slot.tokens_held || 0.0;
+        const refPrice = slot.last_rebal_ratio || slot.entry_ratio || slot.current_ratio || 0.0;
+        const livePrice = slot.current_ratio || 0.0;
+        const priceChg = slot.price_change_from_ref_pct || 0.0;
         const alpha = slot.harvested_alpha_sol || 0.0;
         const slotCycles = slot.cycles_completed || 0;
-        const slotEquity = slot.slot_equity || slot.current_sol_val || 0.50;
-        const cashAnchor = slot.slot_cash !== undefined ? slot.slot_cash : (slotEquity * 0.5);
-        const tokenVal = slot.token_sol_val !== undefined ? slot.token_sol_val : (slotEquity * 0.5);
-        const tokensHeld = slot.tokens_held || 0.0;
+
+        let driftBadgeClass = 'bg-solana-green/15 text-solana-green border-solana-green/30';
+        let driftLabel = `Drift: ${drift >= 0 ? '+' : ''}${drift.toFixed(2)}%`;
+        if (isTrigger) {
+          driftBadgeClass = 'bg-amber-500/20 text-amber-300 border-amber-500/50 animate-pulse';
+          driftLabel = `⚡ REBALANCE (${drift >= 0 ? '+' : ''}${drift.toFixed(2)}%)`;
+        } else if (isNear) {
+          driftBadgeClass = 'bg-amber-500/15 text-amber-300 border-amber-500/30';
+        }
 
         cardsHtml += `
           <div class="bg-solana-dark/90 border ${isTrigger ? 'border-amber-500/60 shadow-lg shadow-amber-500/10' : 'border-solana-border hover:border-solana-green/50'} transition rounded-xl p-4 flex flex-col justify-between font-mono">
+            <!-- Header -->
             <div class="flex items-center justify-between border-b border-solana-border/40 pb-2">
               <div class="flex items-center gap-2">
                 <span class="w-2 h-2 rounded-full ${isTrigger ? 'bg-amber-400 animate-ping' : 'bg-solana-green'}"></span>
-                <span class="font-bold text-white text-sm">SOL / ${sym} Shannon 50/50</span>
+                <span class="font-bold text-white text-sm">SOL / ${sym}</span>
               </div>
-              <span class="px-2 py-0.5 rounded text-[11px] font-bold ${isTrigger ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse' : 'bg-solana-green/20 text-solana-green border border-solana-green/30'}">
-                ${isTrigger ? '⚡ REBALANCE TRIGGER (' + (drift >= 0 ? '+' : '') + drift.toFixed(1) + '%)' : 'BALANCED (' + (drift >= 0 ? '+' : '') + drift.toFixed(1) + '% Drift)'}
+              <span class="px-2 py-0.5 rounded text-[10px] font-bold border ${driftBadgeClass}">
+                ${driftLabel}
               </span>
             </div>
-            
-            <!-- Dual Balance 50/50 Gauge inside Slot -->
+
+            <!-- 50/50 Value Scale Bar (الميزان) -->
             <div class="my-3">
-              <div class="flex justify-between text-[10px] text-gray-400 mb-1">
-                <span class="text-solana-green font-bold">Cash Anchor: ${wCash.toFixed(1)}%</span>
-                <span class="text-amber-400 font-bold">Target 50 / 50</span>
+              <div class="flex justify-between text-[10px] mb-1">
+                <span class="text-solana-green font-bold">SOL: ${wCash.toFixed(1)}%</span>
+                <span class="text-gray-400">Scale 50 / 50</span>
                 <span class="text-solana-purple font-bold">${sym}: ${wToken.toFixed(1)}%</span>
               </div>
-              <div class="w-full bg-gray-800 rounded-full h-2.5 flex overflow-hidden border border-solana-border/60">
+              <div class="relative w-full bg-gray-800 rounded-full h-2.5 flex overflow-hidden border border-solana-border/60">
                 <div class="bg-solana-green h-2.5 transition-all duration-500" style="width: ${wCash}%"></div>
                 <div class="bg-solana-purple h-2.5 transition-all duration-500" style="width: ${wToken}%"></div>
+                <div class="absolute top-0 bottom-0 left-1/2 w-0.5 bg-white/80 -translate-x-1/2" title="Exact 50/50 Center"></div>
               </div>
             </div>
 
-            <!-- Quantitative Slot Stats -->
+            <!-- Two Kaffas & Price Details -->
             <div class="grid grid-cols-2 gap-2 my-1 text-[11px] bg-solana-card/40 p-2.5 rounded-lg border border-solana-border/30">
               <div>
-                <span class="text-gray-400 block text-[10px]">Total Slot Equity:</span>
-                <span class="text-white font-bold">${slotEquity.toFixed(4)} SOL</span>
+                <span class="text-gray-400 block text-[10px]">SOL Cash Kaffa:</span>
+                <span class="text-solana-green font-bold">${cashVal.toFixed(4)} SOL</span>
               </div>
               <div>
-                <span class="text-gray-400 block text-[10px]">Harvested Alpha (g):</span>
-                <span class="text-solana-green font-bold">+${alpha.toFixed(5)} SOL</span>
+                <span class="text-gray-400 block text-[10px]">${sym} Value Kaffa:</span>
+                <span class="text-solana-purple font-bold">${tokenVal.toFixed(4)} SOL</span>
               </div>
               <div>
-                <span class="text-gray-400 block text-[10px]">Liquid Cash Inside:</span>
-                <span class="text-solana-green font-bold">${cashAnchor.toFixed(4)} SOL</span>
+                <span class="text-gray-400 block text-[10px]">Live Price (Δ Ref):</span>
+                <span class="text-white font-bold">${formatRatio(livePrice)} <span class="${priceChg >= 0 ? 'text-solana-green' : 'text-amber-300'} text-[10px]">(${priceChg >= 0 ? '+' : ''}${priceChg.toFixed(1)}%)</span></span>
               </div>
               <div>
-                <span class="text-gray-400 block text-[10px]">${sym} Held Value:</span>
-                <span class="text-solana-purple font-bold">${tokenVal.toFixed(4)} SOL <span class="text-gray-400 text-[9px]">(${tokensHeld.toLocaleString()})</span></span>
+                <span class="text-gray-400 block text-[10px]">${sym} Qty Held:</span>
+                <span class="text-gray-200 font-bold">${tokensHeld.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
               </div>
             </div>
 
+            <!-- Footer -->
             <div class="pt-2 border-t border-solana-border/40 flex items-center justify-between text-[10px] text-gray-400 mt-2">
-              <span class="flex items-center gap-1">
-                <i data-lucide="refresh-cw" class="w-3 h-3 text-amber-400"></i>
-                <span>${slotCycles} Micro-Rebalances</span>
-              </span>
-              <span class="text-gray-300 font-bold">Rebalance Band: &plusmn;2.5% Drift</span>
+              <span>Equity: <strong class="text-white">${slotEquity.toFixed(4)} SOL</strong></span>
+              <span> Cycles: <strong class="text-amber-300">${slotCycles}</strong> | Alpha: <strong class="text-solana-green">+${alpha.toFixed(5)}</strong></span>
             </div>
           </div>
         `;
@@ -792,38 +860,46 @@ function renderDemoUI(state) {
     }
   }
 
-  // Opportunity Radar Scanner Table
+  // 5. Live 6-Basket Threshold Drift Monitor Table
   const radarTbody = document.getElementById('scanner-radar-tbody');
   const scanned = state.scanned_pairs_status || [];
   if (radarTbody && scanned.length > 0) {
     let rHtml = '';
     scanned.forEach(item => {
-      const tranche50 = centralCash * 0.50;
-      
+      const pChg = item.price_change_ref_pct || 0.0;
+      const drift = item.drift_pct || 0.0;
+      const prog = item.progress_to_trigger_pct || 0.0;
+      const wCash = item.weight_cash_pct !== undefined ? item.weight_cash_pct : 50.0;
+      const wTok = item.weight_token_pct !== undefined ? item.weight_token_pct : 50.0;
+
       let badgeHtml = '';
-      if (item.gate_status === 'SLOT_ACTIVE' || item.gate_status === 'POSITION_OPEN') {
-        badgeHtml = '<span class="px-2 py-0.5 rounded bg-solana-purple/20 text-solana-purple border border-solana-purple/40 text-[10px]">SHANNON 50/50 ACTIVE</span>';
-      } else if (item.gate_status === 'QUALIFIED') {
-        badgeHtml = '<span class="px-2 py-0.5 rounded bg-solana-green/20 text-solana-green border border-solana-green/40 text-[10px] animate-pulse">⚡ EV+ QUALIFIED</span>';
-      } else if (item.gate_status === 'WAITING_DIP') {
-        badgeHtml = `<span class="px-2 py-0.5 rounded bg-gray-800 text-gray-400 border border-gray-700 text-[10px]">WAITING DIP (Z &gt; -1.4)</span>`;
-      } else if (item.gate_status === 'BLOCKED_LOW_CASH') {
-        badgeHtml = `<span class="px-2 py-0.5 rounded bg-red-500/20 text-red-300 border border-red-500/40 text-[10px]">🛡️ GATE: LOW CASH</span>`;
-      } else if (item.gate_status === 'BLOCKED_GAS_BUFFER') {
-        badgeHtml = `<span class="px-2 py-0.5 rounded bg-red-500/20 text-red-300 border border-red-500/40 text-[10px]">🛡️ GATE: GAS BUFFER</span>`;
+      if (item.gate_status === 'REBALANCED_50_50') {
+        badgeHtml = '<span class="px-2 py-0.5 rounded bg-solana-green/20 text-solana-green border border-solana-green/40 text-[10px] font-bold">⚡ REBALANCED 50/50</span>';
+      } else if (item.gate_status === 'NEAR_TRIGGER') {
+        badgeHtml = '<span class="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-bold animate-pulse">⚠️ NEAR ±2.5% BAND</span>';
       } else if (item.gate_status === 'BLOCKED_FEE_DRAG') {
-        badgeHtml = `<span class="px-2 py-0.5 rounded bg-red-500/20 text-red-300 border border-red-500/40 text-[10px]">🛡️ GATE: HIGH FEE</span>`;
+        badgeHtml = '<span class="px-2 py-0.5 rounded bg-red-500/20 text-red-300 border border-red-500/40 text-[10px]">🛡️ FEE GATE HOLD</span>';
+      } else if (item.gate_status === 'IN_OPTIMAL_BAND') {
+        badgeHtml = '<span class="px-2 py-0.5 rounded bg-solana-purple/20 text-solana-purple border border-solana-purple/40 text-[10px]">✅ IN 50/50 BAND</span>';
       } else {
-        badgeHtml = `<span class="px-2 py-0.5 rounded bg-gray-800 text-gray-400 border border-gray-700 text-[10px]">MONITORING</span>`;
+        badgeHtml = '<span class="px-2 py-0.5 rounded bg-gray-800 text-gray-400 border border-gray-700 text-[10px]">AWAITING FEED</span>';
       }
 
       rHtml += `
         <tr class="hover:bg-solana-dark/50 transition">
           <td class="py-2 px-3 font-bold text-white">${item.pair}</td>
-          <td class="py-2 px-3 text-gray-300">${formatRatio(item.current_ratio)}</td>
-          <td class="py-2 px-3 font-bold ${item.z_score <= -1.4 ? 'text-solana-green' : 'text-gray-400'}">${item.z_score.toFixed(2)}</td>
-          <td class="py-2 px-3 text-amber-300 font-bold">+${item.target_yield_pct.toFixed(1)}%</td>
-          <td class="py-2 px-3 text-gray-300">${tranche50.toFixed(4)} SOL</td>
+          <td class="py-2 px-3 text-gray-400">${formatRatio(item.last_rebal_ratio || item.entry_ratio)}</td>
+          <td class="py-2 px-3 text-white font-bold">${formatRatio(item.current_ratio)}</td>
+          <td class="py-2 px-3 font-bold ${pChg >= 0 ? 'text-solana-green' : 'text-amber-300'}">${pChg >= 0 ? '+' : ''}${pChg.toFixed(2)}%</td>
+          <td class="py-2 px-3 text-gray-300">${wCash.toFixed(1)}% / ${wTok.toFixed(1)}%</td>
+          <td class="py-2 px-3">
+            <div class="flex items-center gap-2">
+              <span class="font-bold ${Math.abs(drift) >= bandPct * 0.75 ? 'text-amber-300' : 'text-gray-200'}">${drift >= 0 ? '+' : ''}${drift.toFixed(2)}%</span>
+              <div class="w-16 bg-gray-800 rounded-full h-1.5 overflow-hidden">
+                <div class="${prog >= 75 ? 'bg-amber-400' : 'bg-solana-green'} h-1.5" style="width: ${prog}%"></div>
+              </div>
+            </div>
+          </td>
           <td class="py-2 px-3 text-right">${badgeHtml}</td>
         </tr>
       `;
@@ -831,7 +907,7 @@ function renderDemoUI(state) {
     radarTbody.innerHTML = rHtml;
   }
 
-  // Execution Ledger (Micro-Rebalances)
+  // 6. Execution Ledger
   const tbody = document.getElementById('demo-trades-tbody');
   const countEl = document.getElementById('demo-trades-count');
   const history = state.trade_history || [];
@@ -845,7 +921,7 @@ function renderDemoUI(state) {
       tbody.innerHTML = `
         <tr>
           <td colspan="7" class="py-6 text-center text-gray-500 font-mono text-xs">
-            Pure Shannon 50/50 Harvester ready. Scanning market for volatility drifts...
+            6-Basket 50/50 Threshold Harvester ready. Monitoring live price drifts...
           </td>
         </tr>
       `;
@@ -853,19 +929,17 @@ function renderDemoUI(state) {
       let tHtml = '';
       history.forEach(t => {
         const dateStr = new Date(t.time * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-        const isWin = t.net_profit_sol >= 0;
-        
+        const isPositive = (t.net_profit_sol || 0) >= 0;
+
         let typeBadge = '';
         if (t.type === 'SHANNON_SELL_EXCESS') {
           typeBadge = '<span class="text-solana-green font-bold">⚡ REBALANCE SELL</span>';
         } else if (t.type === 'SHANNON_BUY_DIP') {
           typeBadge = '<span class="text-amber-400 font-bold">🛒 REBALANCE BUY</span>';
         } else if (t.type === 'SHANNON_50_50_INIT') {
-          typeBadge = '<span class="text-solana-purple font-bold">🎯 50/50 SETUP</span>';
-        } else if (t.type === 'FEE_GATE_PROTECT') {
-          typeBadge = '<span class="text-red-400 font-bold">🛡️ FEE GATE</span>';
+          typeBadge = '<span class="text-solana-purple font-bold">🎯 50/50 BASKET</span>';
         } else {
-          typeBadge = '<span class="text-blue-400 font-bold">🔄 RECONCILE</span>';
+          typeBadge = '<span class="text-gray-300 font-bold">⚖️ SHANNON</span>';
         }
 
         tHtml += `
@@ -875,13 +949,13 @@ function renderDemoUI(state) {
               ${typeBadge} <span class="text-gray-300 font-normal text-[11px]">${t.action || ''}</span>
             </td>
             <td class="py-2.5 px-3 text-gray-300 text-xs">${t.tranche_sol ? t.tranche_sol.toFixed(4) : '-'} SOL</td>
-            <td class="py-2.5 px-3 text-solana-purple font-bold text-xs">${t.tokens_traded ? t.tokens_traded.toLocaleString() : '-'}</td>
+            <td class="py-2.5 px-3 text-solana-purple font-bold text-xs">${t.tokens_traded ? t.tokens_traded.toLocaleString(undefined, { maximumFractionDigits: 2 }) : '-'}</td>
             <td class="py-2.5 px-3 text-gray-400 text-[11px]">${formatRatio(t.ratio || 0)}</td>
-            <td class="py-2.5 px-3 font-bold text-xs whitespace-nowrap ${isWin ? 'text-solana-green' : 'text-gray-400'}">
+            <td class="py-2.5 px-3 font-bold text-xs whitespace-nowrap ${isPositive ? 'text-solana-green' : 'text-gray-400'}">
               ${t.net_profit_sol !== undefined ? (t.net_profit_sol >= 0 ? '+' : '') + t.net_profit_sol.toFixed(5) + ' SOL' : '-'}
             </td>
             <td class="py-2.5 px-3 text-right text-gray-400 text-[11px] whitespace-nowrap">
-              <span class="px-2 py-0.5 rounded bg-gray-800/80 text-gray-300 border border-gray-700/60">${t.reason || 'Shannon Rebalance'}</span>
+              <span class="px-2 py-0.5 rounded bg-gray-800/80 text-gray-300 border border-gray-700/60">${t.reason || 'Threshold Drift Rebalance'}</span>
             </td>
           </tr>
         `;
@@ -895,32 +969,13 @@ function renderDemoUI(state) {
 
 async function toggleDemoBot() {
   try {
-    if (!demoState || demoState.strategy !== 'pure_shannon_multi_hunter') {
-      demoState = {
-        strategy: 'pure_shannon_multi_hunter',
-        is_running: false,
-        initial_capital_sol: 1.0,
-        current_balance_sol: 1.0,
-        central_cash_sol: 1.0,
-        active_slots: {},
-        active_slots_count: 0,
-        total_harvested_alpha_sol: 0.0,
-        total_profit_sol: 0.0,
-        total_profit_pct: 0.0,
-        total_cycles_completed: 0,
-        min_tranche_floor_sol: 0.02,
-        scanned_pairs_status: [],
-        trade_history: [],
-        last_tick_time: Date.now() / 1000,
-        created_at: Date.now() / 1000
-      };
+    const nextRunning = demoState ? !demoState.is_running : true;
+    if (demoState) {
+      demoState.is_running = nextRunning;
+      demoState.last_tick_time = Date.now() / 1000;
+      localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(demoState));
+      renderDemoUI(demoState);
     }
-
-    const nextRunning = !demoState.is_running;
-    demoState.is_running = nextRunning;
-    demoState.last_tick_time = Date.now() / 1000;
-    localStorage.setItem('solana_demo_state', JSON.stringify(demoState));
-    renderDemoUI(demoState);
 
     const res = await fetch('/api/demo/toggle', {
       method: 'POST',
@@ -928,54 +983,33 @@ async function toggleDemoBot() {
       body: JSON.stringify({ state: demoState, running: nextRunning })
     });
     const updated = await res.json();
-    if (updated && updated.initial_capital_sol) {
+    if (updated && updated.strategy === DEMO_STRATEGY_ID) {
       demoState = updated;
-      localStorage.setItem('solana_demo_state', JSON.stringify(demoState));
+      localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(demoState));
       renderDemoUI(demoState);
     }
   } catch (err) {
-    console.error('Error toggling demo bot:', err);
+    console.error('Error toggling 6-basket Shannon bot:', err);
   }
 }
 
 async function confirmResetDemo() {
-  if (confirm('هل أنت متأكد أنك باغي تمسح الـ Historique وتبدا من اللول بـ 1.0 SOL؟\n\nReset & restart Pure Shannon Multi-Slot Volatility Harvester fresh with 1.000 SOL?')) {
+  if (confirm('هل أنت متأكد أنك باغي تعاود تبدا من الزيرو بـ 1.0 SOL مقسمة 50/50 على الـ 6 سلات كاملين؟\n\nReset & deploy fresh 1.0000 SOL across all 6 Shannon 50/50 Baskets?')) {
     try {
-      const cleanState = {
-        strategy: 'pure_shannon_multi_hunter',
-        is_running: true,
-        initial_capital_sol: 1.0,
-        current_balance_sol: 1.0,
-        central_cash_sol: 1.0,
-        active_slots: {},
-        active_slots_count: 0,
-        total_harvested_alpha_sol: 0.0,
-        total_profit_sol: 0.0,
-        total_profit_pct: 0.0,
-        total_cycles_completed: 0,
-        min_tranche_floor_sol: 0.02,
-        scanned_pairs_status: [],
-        trade_history: [],
-        last_tick_time: Date.now() / 1000,
-        created_at: Date.now() / 1000
-      };
-      demoState = cleanState;
-      localStorage.setItem('solana_demo_state', JSON.stringify(demoState));
-      renderDemoUI(demoState);
-
+      localStorage.removeItem(DEMO_STORAGE_KEY);
       const res = await fetch('/api/demo/reset', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ state: cleanState })
+        body: JSON.stringify({})
       });
       const updated = await res.json();
-      if (updated && updated.initial_capital_sol) {
+      if (updated && updated.strategy === DEMO_STRATEGY_ID) {
         demoState = updated;
-        localStorage.setItem('solana_demo_state', JSON.stringify(demoState));
+        localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(demoState));
         renderDemoUI(demoState);
       }
     } catch (err) {
-      console.error('Error resetting demo:', err);
+      console.error('Error resetting 6-basket demo:', err);
     }
   }
 }
@@ -989,13 +1023,13 @@ async function tickDemoBot() {
         body: JSON.stringify({ state: demoState })
       });
       const updated = await res.json();
-      if (updated && updated.initial_capital_sol) {
+      if (updated && updated.strategy === DEMO_STRATEGY_ID) {
         demoState = updated;
-        localStorage.setItem('solana_demo_state', JSON.stringify(demoState));
+        localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(demoState));
         renderDemoUI(demoState);
       }
     } catch (e) {
-      console.error('Error ticking demo bot:', e);
+      console.error('Error ticking 6-basket demo bot:', e);
     }
   }
 }
@@ -1006,9 +1040,9 @@ document.addEventListener('DOMContentLoaded', () => {
   loadTickers();
   loadLstDepeg();
   loadDemoState();
-  
+
   // Real-time live auto-refresh every 2.5 seconds
   setInterval(pollActiveTab, 2500);
-  // Auto-tick demo bot every 5 seconds
+  // Auto-tick 6-basket Shannon bot every 5 seconds
   setInterval(tickDemoBot, 5000);
 });
