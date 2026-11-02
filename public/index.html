@@ -176,9 +176,8 @@
     <section id="page-pairs" class="tab-page hidden space-y-8">
 
       <!-- ========================================== -->
-      <!-- AUTONOMOUS QUANT DEMO ENGINE (1.0 SOL) -->
-      <!-- ========================================== -->
-      <!-- SHANNON'S DEMON 50/50 VOLATILITY HARVESTER (1.0 SOL) -->
+      <!-- AUTONOMOUS MULTI-OPPORTUNITY HUNTER (1.0 SOL) -->
+      <!-- ZENO 50% CASH ALLOCATOR & PRE-FLIGHT FEE GATE -->
       <!-- ========================================== -->
       <div id="card-demo-engine" class="bg-gradient-to-r from-solana-card via-solana-dark to-solana-card border border-solana-green/40 rounded-2xl p-6 shadow-2xl relative overflow-hidden">
         
@@ -188,30 +187,22 @@
             <div class="flex items-center gap-3">
               <span class="w-3 h-3 rounded-full bg-solana-green animate-ping" id="demo-pulse"></span>
               <h2 class="text-xl font-bold text-white tracking-wide flex items-center gap-2">
-                🤖 Shannon's Demon 50/50 Volatility Harvester (1.0 SOL)
+                🤖 Autonomous Multi-Opportunity Hunter (1.0 SOL)
               </h2>
               <span id="demo-status-badge" class="px-3 py-1 rounded-full text-xs font-mono font-bold bg-solana-green/20 text-solana-green border border-solana-green/40">
-                ACTIVE (LIVE 24/7)
+                ACTIVE (AUTO-SCAN 24/7)
               </span>
             </div>
             <p class="text-xs text-gray-400 mt-1 font-mono">
-              Deterministic volatility compounding: <span class="text-amber-300 font-bold">g = 0.5&mu; + 0.125&sigma;&sup2;</span>. Micro-rebalances on &plusmn;2.5% drift without freezing capital.
+              Auto-scans Solana pairs 24/7. Allocates <span class="text-amber-300 font-bold">50% of available cash</span> per opportunity with <span class="text-solana-green font-bold">Pre-Flight Fee & Net Profit Gate</span>.
             </p>
           </div>
 
-          <!-- ACTION BUTTONS & PAIR SELECTOR -->
+          <!-- ACTION BUTTONS -->
           <div class="flex flex-wrap items-center gap-3">
-            <select id="demo-shannon-pair" onchange="changeShannonPair(this.value)" class="bg-solana-dark border border-solana-border hover:border-solana-green text-white text-xs font-mono font-bold rounded-xl px-3 py-2.5 outline-none transition cursor-pointer">
-              <option value="SOL / KMNO">SOL / KMNO (102.3% Vol)</option>
-              <option value="SOL / RAY">SOL / RAY (96.5% Vol)</option>
-              <option value="SOL / JUP">SOL / JUP (84.2% Vol)</option>
-              <option value="SOL / PUMP">SOL / PUMP (142.0% Vol)</option>
-              <option value="SOL / JTO">SOL / JTO (89.5% Vol)</option>
-            </select>
-
-            <button id="btn-demo-toggle" onclick="toggleDemoBot()" class="px-4 py-2.5 rounded-xl font-mono text-xs font-bold transition flex items-center gap-2 shadow-lg bg-solana-green text-black hover:bg-solana-green/90">
+            <button id="btn-demo-toggle" onclick="toggleDemoBot()" class="px-5 py-2.5 rounded-xl font-mono text-xs font-bold transition flex items-center gap-2 shadow-lg bg-solana-green text-black hover:bg-solana-green/90">
               <i data-lucide="play" class="w-4 h-4"></i>
-              <span id="demo-toggle-label">Start Harvester</span>
+              <span id="demo-toggle-label">Start Hunter</span>
             </button>
             <button onclick="confirmResetDemo()" class="px-4 py-2.5 rounded-xl font-mono text-xs font-bold transition flex items-center gap-2 border border-red-500/40 text-red-400 bg-red-500/10 hover:bg-red-500/20">
               <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
@@ -220,8 +211,27 @@
           </div>
         </div>
 
+        <!-- PRE-EXECUTION FEE FEASIBILITY & NET EV+ GATE BANNER -->
+        <div class="mt-4 bg-solana-dark/70 border border-solana-border rounded-xl p-3 flex flex-wrap items-center justify-between text-xs font-mono gap-2">
+          <div class="flex items-center gap-2">
+            <span class="px-2 py-0.5 rounded bg-solana-green/20 text-solana-green font-bold border border-solana-green/30 text-[11px]">
+              🛡️ PRE-FLIGHT FEE GATE: ACTIVE
+            </span>
+            <span class="text-gray-300">Sizing: <strong class="text-white">50% Free Cash</strong></span>
+            <span class="text-gray-500">|</span>
+            <span class="text-gray-300">Min Tranche: <strong class="text-amber-300">&ge; 0.020 SOL</strong></span>
+          </div>
+          <div class="flex items-center gap-2 text-[11px] text-gray-400">
+            <span>Round-Trip Fees: <strong class="text-gray-200">0.30%</strong></span>
+            <span class="text-gray-500">|</span>
+            <span>Fee Filter: <strong class="text-solana-green">Rejects if Fees &gt; 20% of Gain</strong></span>
+            <span class="text-gray-500">|</span>
+            <span>Gas Cushion: <strong class="text-solana-purple">&ge; 0.005 SOL Free</strong></span>
+          </div>
+        </div>
+
         <!-- LIVE KPI CARDS (4 TILES) -->
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
           <!-- 1. Total Equity -->
           <div class="bg-solana-dark/80 border border-solana-border rounded-xl p-4">
             <span class="text-[11px] text-gray-400 font-mono uppercase tracking-wider block">Total Portfolio Equity</span>
@@ -234,7 +244,7 @@
 
           <!-- 2. Harvested Shannon Alpha -->
           <div class="bg-solana-dark/80 border border-solana-border rounded-xl p-4">
-            <span class="text-[11px] text-gray-400 font-mono uppercase tracking-wider block">Harvested Alpha (g)</span>
+            <span class="text-[11px] text-gray-400 font-mono uppercase tracking-wider block">Harvested Net Alpha</span>
             <div class="text-xl font-bold font-mono text-solana-green mt-1 flex items-baseline gap-1.5">
               <span id="demo-kpi-profit">+0.0000</span>
               <span class="text-xs font-bold">SOL</span>
@@ -242,108 +252,108 @@
             <span id="demo-kpi-profit-pct" class="text-[11px] text-solana-green/90 font-mono font-bold block mt-0.5">+0.00% Net Growth</span>
           </div>
 
-          <!-- 3. Completed Rebalances -->
+          <!-- 3. Active Hunting Slots -->
           <div class="bg-solana-dark/80 border border-solana-border rounded-xl p-4">
-            <span class="text-[11px] text-gray-400 font-mono uppercase tracking-wider block">Rebalance Cycles</span>
+            <span class="text-[11px] text-gray-400 font-mono uppercase tracking-wider block">Active Slots / Closed</span>
             <div class="text-xl font-bold font-mono text-amber-300 mt-1 flex items-baseline gap-1.5">
-              <span id="demo-kpi-cycles">0</span>
-              <span class="text-xs text-gray-400">Cycles</span>
+              <span id="demo-kpi-slots">0</span>
+              <span class="text-xs text-gray-400">/ 3 Active (<span id="demo-kpi-cycles">0</span> TP)</span>
             </div>
-            <span class="text-[11px] text-gray-400 font-mono block mt-0.5">&plusmn;2.5% Drift Threshold</span>
+            <span class="text-[11px] text-gray-400 font-mono block mt-0.5">Scanning 6 Pairs 24/7</span>
           </div>
 
           <!-- 4. Liquid SOL Cash Anchor -->
           <div class="bg-solana-dark/80 border border-solana-border rounded-xl p-4">
-            <span class="text-[11px] text-gray-400 font-mono uppercase tracking-wider block">Liquid SOL Cash</span>
+            <span class="text-[11px] text-gray-400 font-mono uppercase tracking-wider block">Uncommitted SOL Cash</span>
             <div class="text-xl font-bold font-mono text-solana-purple mt-1 flex items-baseline gap-1.5">
-              <span id="demo-kpi-liquid-sol">0.5000</span>
+              <span id="demo-kpi-liquid-sol">1.0000</span>
               <span class="text-xs font-bold">SOL</span>
             </div>
-            <span class="text-[11px] text-solana-green font-mono block mt-0.5 font-bold">&check; 100% Liquid (Zero Lockup)</span>
+            <span id="demo-kpi-cash-pct" class="text-[11px] text-solana-green font-mono block mt-0.5 font-bold">100.0% Liquid (Never Frozen)</span>
           </div>
         </div>
 
-        <!-- 50/50 LIVE BALANCE & DRIFT GAUGE -->
-        <div class="mt-6 bg-solana-dark/60 border border-solana-border rounded-2xl p-5">
-          <div class="flex flex-col md:flex-row md:items-center justify-between pb-3 border-b border-solana-border/40 gap-2">
+        <!-- MULTI-ASSET CAPITAL ALLOCATION BAR -->
+        <div class="mt-4 bg-solana-dark/60 border border-solana-border rounded-2xl p-4">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-2 gap-2">
             <span class="text-xs font-bold font-mono text-white flex items-center gap-2">
               <span class="w-2 h-2 rounded-full bg-solana-green animate-pulse"></span>
-              Live 50/50 Shannon Balance & Drift Gauge:
+              Live Multi-Asset Capital Allocation:
             </span>
-            <span id="shannon-drift-badge" class="px-3 py-1 rounded-full text-xs font-mono font-bold bg-solana-green/20 text-solana-green border border-solana-green/30 self-start md:self-auto">
-              BALANCED (0.0% Drift)
-            </span>
+            <div id="allocation-legend" class="text-[11px] font-mono text-gray-300 flex flex-wrap items-center gap-3">
+              <!-- Populated by JS -->
+            </div>
           </div>
+          <div id="allocation-bar-container" class="w-full bg-gray-800 rounded-full h-3.5 flex overflow-hidden border border-solana-border">
+            <div id="bar-cash" class="bg-solana-green h-3.5 transition-all duration-500" style="width: 100%"></div>
+          </div>
+        </div>
 
-          <!-- Visual Dual Balance Gauge -->
-          <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 items-center mt-4">
-            <!-- Asset A (SOL Cash) -->
-            <div class="bg-solana-card/80 border border-solana-green/30 rounded-xl p-4 flex flex-col justify-between">
-              <div class="flex items-center justify-between">
-                <span class="text-xs text-gray-400 font-mono uppercase">Asset A: Pure SOL Cash</span>
-                <span id="shannon-cash-pct" class="text-xs font-mono font-bold text-solana-green px-2 py-0.5 rounded bg-solana-green/10 border border-solana-green/20">50.0%</span>
-              </div>
-              <div class="mt-2">
-                <span id="shannon-cash-sol" class="text-lg font-bold font-mono text-white">0.5000</span>
-                <span class="text-xs text-solana-green font-bold font-mono">SOL</span>
-              </div>
-              <span class="text-[10px] text-solana-green/80 font-mono mt-1 block">&check; 100% Free Liquid Reserve</span>
-            </div>
-
-            <!-- Center Rebalance Drift Bar -->
-            <div class="flex flex-col items-center justify-center p-2 text-center">
-              <div class="flex justify-between w-full text-[11px] font-mono mb-1.5 px-1">
-                <span class="text-solana-green font-bold">SOL: <span id="bar-sol-pct">50.0%</span></span>
-                <span class="text-amber-400 font-bold">Target 50 / 50</span>
-                <span class="text-solana-purple font-bold"><span id="bar-token-sym">KMNO</span>: <span id="bar-token-pct">50.0%</span></span>
-              </div>
-              <div class="w-full bg-gray-800 rounded-full h-3 flex overflow-hidden border border-solana-border">
-                <div id="gauge-bar-sol" class="bg-solana-green h-3 transition-all duration-500" style="width: 50%"></div>
-                <div id="gauge-bar-token" class="bg-solana-purple h-3 transition-all duration-500" style="width: 50%"></div>
-              </div>
-              <div class="text-[11px] text-gray-400 font-mono mt-2 flex items-center gap-1.5">
-                <i data-lucide="shuffle" class="w-3.5 h-3.5 text-amber-400"></i>
-                <span>Micro-tranche (<span class="text-white font-bold">&asymp;0.03 SOL</span>) triggers at <span class="text-amber-300 font-bold">&plusmn;2.5% Drift</span></span>
-              </div>
-            </div>
-
-            <!-- Asset B (Volatile Token) -->
-            <div class="bg-solana-card/80 border border-solana-purple/30 rounded-xl p-4 flex flex-col justify-between">
-              <div class="flex items-center justify-between">
-                <span class="text-xs text-gray-400 font-mono uppercase">Asset B: Volatility Engine</span>
-                <span id="shannon-token-pct" class="text-xs font-mono font-bold text-solana-purple px-2 py-0.5 rounded bg-solana-purple/10 border border-solana-purple/20">50.0%</span>
-              </div>
-              <div class="mt-2">
-                <span id="shannon-token-held" class="text-lg font-bold font-mono text-white">0.0</span>
-                <span id="shannon-token-sym" class="text-xs text-solana-purple font-bold font-mono">KMNO</span>
-                <span id="shannon-token-sol-val" class="text-[11px] text-gray-400 font-mono block">(&asymp; 0.5000 SOL)</span>
-              </div>
-              <span class="text-[10px] text-solana-purple/80 font-mono mt-1 block">High-Vol Harvester Engine</span>
+        <!-- ACTIVE OPEN POSITIONS (MULTI-SLOTS) -->
+        <div class="mt-5">
+          <div class="flex items-center justify-between mb-2">
+            <h4 class="text-xs font-bold uppercase tracking-wider text-gray-300 flex items-center gap-2">
+              <i data-lucide="layers" class="w-4 h-4 text-solana-green"></i>
+              <span>Active Position Slots (Current Open Opportunities):</span>
+            </h4>
+            <span id="active-slots-indicator" class="text-xs text-gray-400 font-mono">0 slots in use</span>
+          </div>
+          <div id="active-positions-grid" class="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <!-- Populated by JS -->
+            <div class="col-span-3 py-6 text-center text-gray-500 font-mono text-xs bg-solana-dark/40 border border-solana-border/50 rounded-xl">
+              No active token positions open. 100% of capital is held in Liquid SOL Cash, scanning market for quantitative dips.
             </div>
           </div>
         </div>
 
-        <!-- TRADE HISTORY LEDGER (MICRO-REBALANCES) -->
-        <div class="mt-6 pt-5 border-t border-solana-border/50">
+        <!-- OPPORTUNITY RADAR SCANNER (MONITORING 6 PAIRS) -->
+        <div class="mt-5 bg-solana-dark/50 border border-solana-border/50 rounded-xl p-4">
           <div class="flex items-center justify-between mb-3">
-            <h4 class="text-xs font-bold uppercase tracking-wider text-gray-400 flex items-center gap-2">
-              <i data-lucide="layers" class="w-4 h-4 text-amber-400"></i>
-              <span>Shannon Rebalance Swaps Ledger (Jupiter Micro-Executions):</span>
+            <h4 class="text-xs font-bold uppercase tracking-wider text-gray-300 flex items-center gap-2">
+              <i data-lucide="radar" class="w-4 h-4 text-amber-400 animate-spin"></i>
+              <span>Live Solana Pairs Radar (Continuous Autonomous Scanner):</span>
             </h4>
-            <span id="demo-trades-count" class="text-xs text-gray-500 font-mono">0 completed trades</span>
+            <span class="text-[11px] font-mono text-amber-400">Scans every 2.5s</span>
           </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs font-mono">
+              <thead>
+                <tr class="text-gray-400 border-b border-solana-border pb-1 uppercase tracking-wider text-[10px]">
+                  <th class="py-1.5 px-3">Pair</th>
+                  <th class="py-1.5 px-3">Exchange Rate</th>
+                  <th class="py-1.5 px-3">Z-Score</th>
+                  <th class="py-1.5 px-3">Target Yield</th>
+                  <th class="py-1.5 px-3">Candidate Tranche (50% Cash)</th>
+                  <th class="py-1.5 px-3 text-right">Fee Gate Feasibility Status</th>
+                </tr>
+              </thead>
+              <tbody id="scanner-radar-tbody" class="divide-y divide-solana-border/30">
+                <!-- Populated by JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
 
+        <!-- TRADE HISTORY LEDGER -->
+        <div class="mt-5 pt-4 border-t border-solana-border/50">
+          <div class="flex items-center justify-between mb-2">
+            <h4 class="text-xs font-bold uppercase tracking-wider text-gray-400 flex items-center gap-2">
+              <i data-lucide="history" class="w-4 h-4 text-solana-purple"></i>
+              <span>Execution Ledger & Fee Gate Audit Trail:</span>
+            </h4>
+            <span id="demo-trades-count" class="text-xs text-gray-500 font-mono">0 events</span>
+          </div>
           <div class="overflow-x-auto max-h-64 overflow-y-auto">
             <table class="w-full text-left text-xs font-mono">
               <thead>
                 <tr class="text-gray-400 border-b border-solana-border pb-1 uppercase tracking-wider text-[10px]">
                   <th class="py-2 px-3">Time</th>
-                  <th class="py-2 px-3">Rebalance Action</th>
-                  <th class="py-2 px-3">Tranche Size</th>
+                  <th class="py-2 px-3">Action</th>
+                  <th class="py-2 px-3">Tranche</th>
                   <th class="py-2 px-3">Tokens Traded</th>
-                  <th class="py-2 px-3">Exchange Rate</th>
-                  <th class="py-2 px-3">Harvested Alpha</th>
-                  <th class="py-2 px-3 text-right">Mathematical Reason</th>
+                  <th class="py-2 px-3">Rate</th>
+                  <th class="py-2 px-3">Net Gain</th>
+                  <th class="py-2 px-3 text-right">Gate / Algorithm Reason</th>
                 </tr>
               </thead>
               <tbody id="demo-trades-tbody" class="divide-y divide-solana-border/40">

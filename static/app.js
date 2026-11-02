@@ -586,13 +586,16 @@ async function loadDemoState() {
     const localSaved = localStorage.getItem('solana_demo_state');
     if (localSaved) {
       try {
-        demoState = JSON.parse(localSaved);
-        renderDemoUI(demoState);
-        // If it was running, trigger immediate tick to reconcile offline gap
-        if (demoState && demoState.is_running) {
-          tickDemoBot();
+        const parsed = JSON.parse(localSaved);
+        if (parsed && parsed.strategy === 'zeno_shannon_multi_hunter') {
+          demoState = parsed;
+          renderDemoUI(demoState);
+          // If it was running, trigger immediate tick to reconcile offline gap
+          if (demoState && demoState.is_running) {
+            tickDemoBot();
+          }
+          return;
         }
-        return;
       } catch (e) {
         console.error('Error parsing localStorage demoState:', e);
       }
@@ -619,24 +622,19 @@ function renderDemoUI(state) {
   const toggleBtn = document.getElementById('btn-demo-toggle');
   const toggleLabel = document.getElementById('demo-toggle-label');
   const pulse = document.getElementById('demo-pulse');
-  const pairSelect = document.getElementById('demo-shannon-pair');
-
-  if (pairSelect && state.active_pair) {
-    pairSelect.value = state.active_pair;
-  }
 
   if (statusBadge) {
     statusBadge.className = isRunning
       ? 'px-3 py-1 rounded-full text-xs font-mono font-bold bg-solana-green/20 text-solana-green border border-solana-green/40'
       : 'px-3 py-1 rounded-full text-xs font-mono font-bold bg-gray-800 text-gray-400 border border-gray-700';
-    statusBadge.innerText = isRunning ? 'ACTIVE (LIVE 24/7)' : 'PAUSED';
+    statusBadge.innerText = isRunning ? 'ACTIVE (AUTO-SCAN 24/7)' : 'PAUSED';
   }
 
   if (toggleBtn && toggleLabel) {
     toggleBtn.className = isRunning
-      ? 'px-4 py-2.5 rounded-xl font-mono text-xs font-bold transition flex items-center gap-2 shadow-lg bg-amber-500 text-black hover:bg-amber-400'
-      : 'px-4 py-2.5 rounded-xl font-mono text-xs font-bold transition flex items-center gap-2 shadow-lg bg-solana-green text-black hover:bg-solana-green/90';
-    toggleLabel.innerText = isRunning ? 'Pause Bot' : 'Start Harvester';
+      ? 'px-5 py-2.5 rounded-xl font-mono text-xs font-bold transition flex items-center gap-2 shadow-lg bg-amber-500 text-black hover:bg-amber-400'
+      : 'px-5 py-2.5 rounded-xl font-mono text-xs font-bold transition flex items-center gap-2 shadow-lg bg-solana-green text-black hover:bg-solana-green/90';
+    toggleLabel.innerText = isRunning ? 'Pause Hunter' : 'Start Hunter';
   }
 
   if (pulse) {
@@ -648,14 +646,19 @@ function renderDemoUI(state) {
   const balUsdEl = document.getElementById('demo-kpi-balance-usd');
   const profitEl = document.getElementById('demo-kpi-profit');
   const profitPctEl = document.getElementById('demo-kpi-profit-pct');
+  const slotsEl = document.getElementById('demo-kpi-slots');
   const cyclesEl = document.getElementById('demo-kpi-cycles');
   const liquidSolEl = document.getElementById('demo-kpi-liquid-sol');
+  const cashPctEl = document.getElementById('demo-kpi-cash-pct');
 
   const bal = state.current_balance_sol || 1.0;
   const profit = state.total_profit_sol || 0.0;
   const profitPct = state.total_profit_pct || 0.0;
-  const solCash = state.sol_cash_balance !== undefined ? state.sol_cash_balance : 0.50;
+  const solCash = state.sol_cash_balance !== undefined ? state.sol_cash_balance : 1.0;
+  const activePositions = state.active_positions || {};
+  const activeCount = Object.keys(activePositions).length;
   const cycles = state.total_cycles_completed || 0;
+  const cashPct = bal > 0 ? (solCash / bal) * 100.0 : 100.0;
 
   if (balEl) balEl.innerText = bal.toFixed(4);
   if (balUsdEl) balUsdEl.innerText = `≈ $${(bal * 95.0).toFixed(2)} USD`;
@@ -667,61 +670,150 @@ function renderDemoUI(state) {
     profitPctEl.innerText = `${profitPct >= 0 ? '+' : ''}${profitPct.toFixed(2)}% Net Growth`;
     profitPctEl.className = profitPct >= 0 ? 'text-[11px] text-solana-green/90 font-mono font-bold block mt-0.5' : 'text-[11px] text-red-400/90 font-mono font-bold block mt-0.5';
   }
+  if (slotsEl) slotsEl.innerText = activeCount;
   if (cyclesEl) cyclesEl.innerText = cycles;
   if (liquidSolEl) liquidSolEl.innerText = solCash.toFixed(4);
+  if (cashPctEl) cashPctEl.innerText = `${cashPct.toFixed(1)}% Liquid (Never Frozen)`;
 
-  // 50/50 Dual Balance Gauge
-  const wSol = state.weight_sol_pct !== undefined ? state.weight_sol_pct : 50.0;
-  const wToken = state.weight_token_pct !== undefined ? state.weight_token_pct : 50.0;
-  const drift = state.drift_pct !== undefined ? state.drift_pct : 0.0;
-  const absDrift = Math.abs(drift);
-  const band = state.rebalance_band_pct || 2.5;
-  const tokenBal = state.token_balance || 0.0;
-  const tokenVal = state.token_sol_value !== undefined ? state.token_sol_value : 0.50;
-  const tokenSym = state.token_symbol || 'KMNO';
+  // Multi-Asset Allocation Bar
+  const allocContainer = document.getElementById('allocation-bar-container');
+  const allocLegend = document.getElementById('allocation-legend');
+  if (allocContainer && allocLegend) {
+    const COLORS = [
+      { bg: 'bg-solana-purple', text: 'text-solana-purple' },
+      { bg: 'bg-blue-500', text: 'text-blue-400' },
+      { bg: 'bg-amber-400', text: 'text-amber-300' }
+    ];
 
-  const cashSolEl = document.getElementById('shannon-cash-sol');
-  const cashPctEl = document.getElementById('shannon-cash-pct');
-  const tokenHeldEl = document.getElementById('shannon-token-held');
-  const tokenSymEl = document.getElementById('shannon-token-sym');
-  const tokenSolValEl = document.getElementById('shannon-token-sol-val');
-  const tokenPctEl = document.getElementById('shannon-token-pct');
-  const barSolPctEl = document.getElementById('bar-sol-pct');
-  const barTokenPctEl = document.getElementById('bar-token-pct');
-  const barTokenSymEl = document.getElementById('bar-token-sym');
-  const gaugeSolEl = document.getElementById('gauge-bar-sol');
-  const gaugeTokenEl = document.getElementById('gauge-bar-token');
-  const driftBadgeEl = document.getElementById('shannon-drift-badge');
+    let barsHtml = `<div class="bg-solana-green h-3.5 transition-all duration-500" style="width: ${cashPct.toFixed(1)}%"></div>`;
+    let legendHtml = `<span class="flex items-center gap-1.5 text-solana-green"><span class="w-2.5 h-2.5 rounded-full bg-solana-green"></span> SOL Cash: ${cashPct.toFixed(1)}% (${solCash.toFixed(3)} SOL)</span>`;
 
-  if (cashSolEl) cashSolEl.innerText = solCash.toFixed(4);
-  if (cashPctEl) cashPctEl.innerText = `${wSol.toFixed(1)}%`;
-  if (tokenHeldEl) tokenHeldEl.innerText = tokenBal.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 });
-  if (tokenSymEl) tokenSymEl.innerText = tokenSym;
-  if (tokenSolValEl) tokenSolValEl.innerText = `(≈ ${tokenVal.toFixed(4)} SOL)`;
-  if (tokenPctEl) tokenPctEl.innerText = `${wToken.toFixed(1)}%`;
-  if (barSolPctEl) barSolPctEl.innerText = `${wSol.toFixed(1)}%`;
-  if (barTokenPctEl) barTokenPctEl.innerText = `${wToken.toFixed(1)}%`;
-  if (barTokenSymEl) barTokenSymEl.innerText = tokenSym;
-  if (gaugeSolEl) gaugeSolEl.style.width = `${wSol}%`;
-  if (gaugeTokenEl) gaugeTokenEl.style.width = `${wToken}%`;
+    let colorIdx = 0;
+    for (const [sym, pos] of Object.entries(activePositions)) {
+      const posPct = bal > 0 ? (pos.current_sol_val / bal) * 100.0 : 0.0;
+      const c = COLORS[colorIdx % COLORS.length];
+      barsHtml += `<div class="${c.bg} h-3.5 transition-all duration-500" style="width: ${posPct.toFixed(1)}%"></div>`;
+      legendHtml += `<span class="flex items-center gap-1.5 ${c.text}"><span class="w-2.5 h-2.5 rounded-full ${c.bg}"></span> ${sym}: ${posPct.toFixed(1)}% (${pos.current_sol_val.toFixed(3)} SOL)</span>`;
+      colorIdx++;
+    }
 
-  if (driftBadgeEl) {
-    const isTrigger = absDrift >= band;
-    driftBadgeEl.className = isTrigger
-      ? 'px-3 py-1 rounded-full text-xs font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse'
-      : 'px-3 py-1 rounded-full text-xs font-mono font-bold bg-solana-green/20 text-solana-green border border-solana-green/30';
-    driftBadgeEl.innerText = isTrigger
-      ? `⚡ REBALANCE TRIGGER (${drift >= 0 ? '+' : ''}${drift.toFixed(1)}% Drift)`
-      : `BALANCED (${drift >= 0 ? '+' : ''}${drift.toFixed(1)}% Drift)`;
+    allocContainer.innerHTML = barsHtml;
+    allocLegend.innerHTML = legendHtml;
   }
 
-  // Render Rebalances Ledger
+  // Active Positions Grid
+  const gridEl = document.getElementById('active-positions-grid');
+  const slotsInd = document.getElementById('active-slots-indicator');
+  if (slotsInd) {
+    slotsInd.innerText = `${activeCount} / 3 slots active`;
+  }
+  if (gridEl) {
+    const posKeys = Object.keys(activePositions);
+    if (posKeys.length === 0) {
+      gridEl.innerHTML = `
+        <div class="col-span-3 py-6 text-center text-gray-500 font-mono text-xs bg-solana-dark/40 border border-solana-border/50 rounded-xl">
+          No active token positions open. 100% of capital is held in Liquid SOL Cash, scanning market for quantitative dips.
+        </div>
+      `;
+    } else {
+      let cardsHtml = '';
+      posKeys.forEach(sym => {
+        const p = activePositions[sym];
+        const isProfit = p.pnl_pct >= 0;
+        const targetYield = p.target_yield_pct || 2.8;
+        const progressPct = Math.min(100, Math.max(0, (p.pnl_pct / targetYield) * 100));
+
+        cardsHtml += `
+          <div class="bg-solana-dark/90 border border-solana-border hover:border-solana-green/50 transition rounded-xl p-4 flex flex-col justify-between font-mono">
+            <div class="flex items-center justify-between border-b border-solana-border/40 pb-2">
+              <div class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-solana-green animate-pulse"></span>
+                <span class="font-bold text-white text-sm">${p.pair || 'SOL / ' + sym}</span>
+              </div>
+              <span class="px-2 py-0.5 rounded text-[11px] font-bold ${isProfit ? 'bg-solana-green/20 text-solana-green border border-solana-green/30' : 'bg-red-500/20 text-red-300 border border-red-500/30'}">
+                ${isProfit ? '+' : ''}${p.pnl_pct.toFixed(2)}% PnL
+              </span>
+            </div>
+            
+            <div class="grid grid-cols-2 gap-2 my-3 text-[11px]">
+              <div>
+                <span class="text-gray-400 block">Invested (50% Cash):</span>
+                <span class="text-white font-bold">${p.invested_sol.toFixed(4)} SOL</span>
+              </div>
+              <div>
+                <span class="text-gray-400 block">Current Value:</span>
+                <span class="text-solana-green font-bold">${p.current_sol_val.toFixed(4)} SOL</span>
+              </div>
+              <div>
+                <span class="text-gray-400 block">Tokens Held:</span>
+                <span class="text-solana-purple font-bold">${p.tokens_held.toLocaleString()}</span>
+              </div>
+              <div>
+                <span class="text-gray-400 block">Take-Profit Target:</span>
+                <span class="text-amber-300 font-bold">+${targetYield.toFixed(1)}%</span>
+              </div>
+            </div>
+
+            <div class="pt-2 border-t border-solana-border/40">
+              <div class="flex justify-between text-[10px] text-gray-400 mb-1">
+                <span>TP Progress:</span>
+                <span class="text-amber-300 font-bold">${progressPct.toFixed(0)}%</span>
+              </div>
+              <div class="w-full bg-gray-800 rounded-full h-1.5 overflow-hidden">
+                <div class="bg-gradient-to-r from-solana-purple to-solana-green h-1.5 transition-all" style="width: ${progressPct}%"></div>
+              </div>
+            </div>
+          </div>
+        `;
+      });
+      gridEl.innerHTML = cardsHtml;
+    }
+  }
+
+  // Opportunity Radar Scanner Table
+  const radarTbody = document.getElementById('scanner-radar-tbody');
+  const scanned = state.scanned_pairs_status || [];
+  if (radarTbody && scanned.length > 0) {
+    let rHtml = '';
+    scanned.forEach(item => {
+      const tranche50 = solCash * 0.50;
+      
+      let badgeHtml = '';
+      if (item.gate_status === 'POSITION_OPEN') {
+        badgeHtml = '<span class="px-2 py-0.5 rounded bg-solana-purple/20 text-solana-purple border border-solana-purple/40 text-[10px]">SLOT ACTIVE</span>';
+      } else if (item.gate_status === 'QUALIFIED') {
+        badgeHtml = '<span class="px-2 py-0.5 rounded bg-solana-green/20 text-solana-green border border-solana-green/40 text-[10px] animate-pulse">⚡ EV+ QUALIFIED</span>';
+      } else if (item.gate_status === 'COOLDOWN') {
+        badgeHtml = `<span class="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px]">COOLDOWN</span>`;
+      } else if (item.gate_status === 'BLOCKED_LOW_CASH') {
+        badgeHtml = `<span class="px-2 py-0.5 rounded bg-red-500/20 text-red-300 border border-red-500/40 text-[10px]">🛡️ GATE: LOW CASH</span>`;
+      } else if (item.gate_status === 'BLOCKED_FEE_DRAG') {
+        badgeHtml = `<span class="px-2 py-0.5 rounded bg-red-500/20 text-red-300 border border-red-500/40 text-[10px]">🛡️ GATE: HIGH FEE</span>`;
+      } else {
+        badgeHtml = `<span class="px-2 py-0.5 rounded bg-gray-800 text-gray-400 border border-gray-700 text-[10px]">MONITORING</span>`;
+      }
+
+      rHtml += `
+        <tr class="hover:bg-solana-dark/50 transition">
+          <td class="py-2 px-3 font-bold text-white">${item.pair}</td>
+          <td class="py-2 px-3 text-gray-300">${formatRatio(item.current_ratio)}</td>
+          <td class="py-2 px-3 font-bold ${item.z_score <= -1.4 ? 'text-solana-green' : 'text-gray-400'}">${item.z_score.toFixed(2)}</td>
+          <td class="py-2 px-3 text-amber-300 font-bold">+${item.target_yield_pct.toFixed(1)}%</td>
+          <td class="py-2 px-3 text-gray-300">${tranche50.toFixed(4)} SOL</td>
+          <td class="py-2 px-3 text-right">${badgeHtml}</td>
+        </tr>
+      `;
+    });
+    radarTbody.innerHTML = rHtml;
+  }
+
+  // Rebalances / Execution Ledger
   const tbody = document.getElementById('demo-trades-tbody');
   const countEl = document.getElementById('demo-trades-count');
   const history = state.trade_history || [];
 
   if (countEl) {
-    countEl.innerText = `${history.length} completed trade${history.length === 1 ? '' : 's'}`;
+    countEl.innerText = `${history.length} event${history.length === 1 ? '' : 's'}`;
   }
 
   if (tbody) {
@@ -729,7 +821,7 @@ function renderDemoUI(state) {
       tbody.innerHTML = `
         <tr>
           <td colspan="7" class="py-6 text-center text-gray-500 font-mono text-xs">
-            Shannon 50/50 Engine ready. Micro-rebalances execute automatically whenever drift reaches &plusmn;2.5%.
+            Autonomous Multi-Opportunity Hunter ready. Scanning market for statistical dips...
           </td>
         </tr>
       `;
@@ -738,16 +830,16 @@ function renderDemoUI(state) {
       history.forEach(t => {
         const dateStr = new Date(t.time * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
         const isWin = t.net_profit_sol >= 0;
-        const isBuy = t.type === 'BUY_DIP';
-        const isSell = t.type === 'SELL_EXCESS';
         
         let typeBadge = '';
-        if (isSell) {
-          typeBadge = '<span class="text-solana-green font-bold">⚡ SELL EXCESS</span>';
-        } else if (isBuy) {
-          typeBadge = '<span class="text-amber-400 font-bold">🛒 BUY DIP</span>';
+        if (t.type === 'TAKE_PROFIT') {
+          typeBadge = '<span class="text-solana-green font-bold">⚡ TAKE-PROFIT</span>';
+        } else if (t.type === 'AUTO_ENTRY_50PCT') {
+          typeBadge = '<span class="text-solana-purple font-bold">🛒 AUTO 50% ENTRY</span>';
+        } else if (t.type === 'FEE_GATE_PROTECT') {
+          typeBadge = '<span class="text-amber-400 font-bold">🛡️ FEE GATE</span>';
         } else {
-          typeBadge = '<span class="text-solana-purple font-bold">🎯 50/50 SETUP</span>';
+          typeBadge = '<span class="text-blue-400 font-bold">🎯 RECONCILE</span>';
         }
 
         tHtml += `
@@ -763,7 +855,7 @@ function renderDemoUI(state) {
               ${t.net_profit_sol !== undefined ? (t.net_profit_sol >= 0 ? '+' : '') + t.net_profit_sol.toFixed(5) + ' SOL' : '-'}
             </td>
             <td class="py-2.5 px-3 text-right text-gray-400 text-[11px] whitespace-nowrap">
-              <span class="px-2 py-0.5 rounded bg-gray-800/80 text-gray-300 border border-gray-700/60">${t.reason || 'Shannon Rebalance'}</span>
+              <span class="px-2 py-0.5 rounded bg-gray-800/80 text-gray-300 border border-gray-700/60">${t.reason || 'Auto-Execution'}</span>
             </td>
           </tr>
         `;
@@ -775,69 +867,22 @@ function renderDemoUI(state) {
   if (window.lucide) lucide.createIcons();
 }
 
-async function changeShannonPair(pair) {
-  if (!demoState || demoState.strategy !== 'shannon_demon_50_50') {
-    demoState = {
-      strategy: 'shannon_demon_50_50',
-      is_running: false,
-      initial_capital_sol: 1.0,
-      current_balance_sol: 1.0,
-      active_pair: pair,
-      token_symbol: pair.split('/')[1].trim(),
-      sol_cash_balance: 0.50,
-      token_balance: 0.0,
-      token_entry_ratio: 0.0,
-      token_sol_value: 0.50,
-      current_ratio: 0.0,
-      weight_sol_pct: 50.0,
-      weight_token_pct: 50.0,
-      drift_pct: 0.0,
-      rebalance_band_pct: 2.5,
-      total_profit_sol: 0.0,
-      total_profit_pct: 0.0,
-      total_cycles_completed: 0,
-      is_initialized: false,
-      trade_history: [],
-      last_tick_time: Date.now() / 1000,
-      created_at: Date.now() / 1000
-    };
-  } else {
-    demoState.active_pair = pair;
-    demoState.token_symbol = pair.split('/')[1].trim();
-    demoState.is_initialized = false;
-    demoState.token_balance = 0.0;
-  }
-  localStorage.setItem('solana_demo_state', JSON.stringify(demoState));
-  renderDemoUI(demoState);
-  if (demoState.is_running) {
-    await tickDemoBot();
-  }
-}
-
 async function toggleDemoBot() {
   try {
-    if (!demoState || demoState.strategy !== 'shannon_demon_50_50') {
-      const pair = document.getElementById('demo-shannon-pair') ? document.getElementById('demo-shannon-pair').value : 'SOL / KMNO';
+    if (!demoState || demoState.strategy !== 'zeno_shannon_multi_hunter') {
       demoState = {
-        strategy: 'shannon_demon_50_50',
+        strategy: 'zeno_shannon_multi_hunter',
         is_running: false,
         initial_capital_sol: 1.0,
         current_balance_sol: 1.0,
-        active_pair: pair,
-        token_symbol: pair.split('/')[1].trim(),
-        sol_cash_balance: 0.50,
-        token_balance: 0.0,
-        token_entry_ratio: 0.0,
-        token_sol_value: 0.50,
-        current_ratio: 0.0,
-        weight_sol_pct: 50.0,
-        weight_token_pct: 50.0,
-        drift_pct: 0.0,
-        rebalance_band_pct: 2.5,
+        sol_cash_balance: 1.0,
+        active_positions: {},
+        active_positions_count: 0,
         total_profit_sol: 0.0,
         total_profit_pct: 0.0,
         total_cycles_completed: 0,
-        is_initialized: false,
+        min_tranche_floor_sol: 0.02,
+        scanned_pairs_status: [],
         trade_history: [],
         last_tick_time: Date.now() / 1000,
         created_at: Date.now() / 1000
@@ -867,29 +912,21 @@ async function toggleDemoBot() {
 }
 
 async function confirmResetDemo() {
-  if (confirm('هل أنت متأكد أنك باغي تمسح الـ Historique وتبدا من اللول بـ 1.0 SOL؟\n\nReset & restart Shannon 50/50 Volatility Harvester fresh with 1.000 SOL?')) {
+  if (confirm('هل أنت متأكد أنك باغي تمسح الـ Historique وتبدا من اللول بـ 1.0 SOL؟\n\nReset & restart Autonomous Multi-Opportunity Hunter fresh with 1.000 SOL?')) {
     try {
-      const pair = document.getElementById('demo-shannon-pair') ? document.getElementById('demo-shannon-pair').value : 'SOL / KMNO';
       const cleanState = {
-        strategy: 'shannon_demon_50_50',
+        strategy: 'zeno_shannon_multi_hunter',
         is_running: true,
         initial_capital_sol: 1.0,
         current_balance_sol: 1.0,
-        active_pair: pair,
-        token_symbol: pair.split('/')[1].trim(),
-        sol_cash_balance: 0.50,
-        token_balance: 0.0,
-        token_entry_ratio: 0.0,
-        token_sol_value: 0.50,
-        current_ratio: 0.0,
-        weight_sol_pct: 50.0,
-        weight_token_pct: 50.0,
-        drift_pct: 0.0,
-        rebalance_band_pct: 2.5,
+        sol_cash_balance: 1.0,
+        active_positions: {},
+        active_positions_count: 0,
         total_profit_sol: 0.0,
         total_profit_pct: 0.0,
         total_cycles_completed: 0,
-        is_initialized: false,
+        min_tranche_floor_sol: 0.02,
+        scanned_pairs_status: [],
         trade_history: [],
         last_tick_time: Date.now() / 1000,
         created_at: Date.now() / 1000
