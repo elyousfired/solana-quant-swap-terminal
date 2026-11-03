@@ -344,9 +344,14 @@
                 Scans all 15 relative pairs for Opposite Tilt (High &ge; +0.45% &amp; Low &le; &minus;0.45%) with Spread Drift &ge; 1.10% (&asymp;4.4% price divergence) &amp; Anti-Bleed Cap (Max 2 Streaks).
               </p>
             </div>
-            <span class="text-[11px] font-mono text-cyan-300 bg-cyan-500/10 border border-cyan-500/30 px-2.5 py-1 rounded-lg whitespace-nowrap">
-              Top 6 of 15 Cross-Pairs Live
-            </span>
+            <div class="flex items-center gap-2">
+              <span id="cross-pairs-count-badge" class="text-[11px] font-mono text-cyan-300 bg-cyan-500/10 border border-cyan-500/30 px-2.5 py-1 rounded-lg whitespace-nowrap">
+                Showing Top 6 / 15 Pairs
+              </span>
+              <button id="btn-toggle-cross-pairs" onclick="toggleCrossPairsView()" class="px-3 py-1 rounded-lg font-mono text-[11px] font-bold transition bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-500/30 whitespace-nowrap flex items-center gap-1.5">
+                <span id="btn-toggle-cross-pairs-label">👁️ Show All 15 Pairs (عرض الكل)</span>
+              </button>
+            </div>
           </div>
           <div class="overflow-x-auto">
             <table class="w-full text-left text-xs font-mono">
@@ -620,6 +625,6 @@
   </footer>
 
   <!-- SCRIPT -->
-  <script src="app.js?v=7.0"></script>
+  <script src="app.js?v=8.0"></script>
 </body>
 </html>

@@ -791,7 +791,7 @@ def evaluate_demo_tick(
     state["active_slots_count"] = len(active_slots)
     state["total_cycles_completed"] = cycles
     state["total_cross_swaps"] = cross_swaps
-    state["cross_pairs_status"] = all_cross_pairs_info[:6]
+    state["cross_pairs_status"] = all_cross_pairs_info
     state["scanned_pairs_status"] = scanned_status
     state["trade_history"] = trade_history[:80]
 

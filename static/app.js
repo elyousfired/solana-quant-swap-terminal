@@ -583,6 +583,56 @@ const DEMO_STORAGE_KEY = 'solana_shannon_6basket_state_v1';
 const BASKET_ORDER = ['JUP', 'RAY', 'JTO', 'KMNO', 'MET', 'PUMP'];
 
 let demoState = null;
+let showAllCrossPairs = false;
+
+function toggleCrossPairsView() {
+  showAllCrossPairs = !showAllCrossPairs;
+  if (demoState) {
+    renderDemoUI(demoState);
+  }
+}
+
+function buildCrossPairsFromSlots(activeSlots, crossBandPct = 1.10, maxStreak = 2) {
+  const syms = BASKET_ORDER.filter(s => activeSlots && activeSlots[s]);
+  const list = [];
+  for (let i = 0; i < syms.length; i++) {
+    for (let j = i + 1; j < syms.length; j++) {
+      const s1 = syms[i];
+      const s2 = syms[j];
+      const d1 = activeSlots[s1].drift_pct || 0.0;
+      const d2 = activeSlots[s2].drift_pct || 0.0;
+      const highSym = d1 >= d2 ? s1 : s2;
+      const lowSym = d1 >= d2 ? s2 : s1;
+      const dHigh = d1 >= d2 ? d1 : d2;
+      const dLow = d1 >= d2 ? d2 : d1;
+      const spread = dHigh - dLow;
+      const streak = activeSlots[lowSym].cross_buy_streak || 0;
+      const isOpp = dHigh >= 0.45 && dLow <= -0.45;
+      const isReady = spread >= crossBandPct;
+      const isSafe = streak < maxStreak;
+      list.push({
+        pair: `${highSym} -> ${lowSym}`,
+        high_sym: highSym,
+        low_sym: lowSym,
+        drift_high_pct: dHigh,
+        drift_low_pct: dLow,
+        spread_drift_pct: spread,
+        rel_price_spread_pct: spread * 4.0,
+        streak_low: streak,
+        max_streak: maxStreak,
+        status: (isOpp && isReady && isSafe)
+          ? 'READY_CROSS_SWAP'
+          : (isOpp && isReady && !isSafe)
+            ? 'BLEED_CAP_HOLD'
+            : isOpp
+              ? 'WATCHING_SPREAD'
+              : 'NEUTRAL'
+      });
+    }
+  }
+  list.sort((a, b) => b.spread_drift_pct - a.spread_drift_pct);
+  return list;
+}
 
 async function loadDemoState() {
   try {
@@ -915,10 +965,30 @@ function renderDemoUI(state) {
 
   // 5.25 15 Cross-Token Pairs Triangular Rotation Matrix Table
   const crossTbody = document.getElementById('cross-pairs-radar-tbody');
-  const crossPairs = state.cross_pairs_status || [];
+  const crossCountBadge = document.getElementById('cross-pairs-count-badge');
+  const crossBtnLabel = document.getElementById('btn-toggle-cross-pairs-label');
   const crossBandPct = state.cross_spread_band_pct || 1.10;
+  const maxStreakVal = state.max_cross_buy_streak || 2;
+
+  let allCrossPairs = (state.cross_pairs_status && state.cross_pairs_status.length >= 15)
+    ? state.cross_pairs_status
+    : buildCrossPairsFromSlots(activeSlots, crossBandPct, maxStreakVal);
+
+  const visibleCrossPairs = showAllCrossPairs ? allCrossPairs : allCrossPairs.slice(0, 6);
+
+  if (crossCountBadge) {
+    crossCountBadge.innerText = showAllCrossPairs
+      ? `Showing All ${allCrossPairs.length} / 15 Pairs`
+      : `Showing Top ${visibleCrossPairs.length} / 15 Pairs`;
+  }
+  if (crossBtnLabel) {
+    crossBtnLabel.innerText = showAllCrossPairs
+      ? '🔼 Show Top 6 Only (عرض أفضل 6)'
+      : '👁️ Show All 15 Pairs (عرض الكل)';
+  }
+
   if (crossTbody) {
-    if (crossPairs.length === 0) {
+    if (visibleCrossPairs.length === 0) {
       crossTbody.innerHTML = `
         <tr>
           <td colspan="7" class="py-3 text-center text-gray-500 font-mono text-xs">
@@ -928,7 +998,7 @@ function renderDemoUI(state) {
       `;
     } else {
       let cHtml = '';
-      crossPairs.forEach(cp => {
+      visibleCrossPairs.forEach((cp, idx) => {
         const dHigh = cp.drift_high_pct || 0.0;
         const dLow = cp.drift_low_pct || 0.0;
         const spread = cp.spread_drift_pct || 0.0;
@@ -952,7 +1022,7 @@ function renderDemoUI(state) {
 
         cHtml += `
           <tr class="hover:bg-solana-dark/50 transition">
-            <td class="py-2 px-3 font-bold text-cyan-300">${cp.high_sym} &#10140; ${cp.low_sym}</td>
+            <td class="py-2 px-3 font-bold text-cyan-300"><span class="text-gray-500 text-[10px] mr-1">#${idx + 1}</span>${cp.high_sym} &#10140; ${cp.low_sym}</td>
             <td class="py-2 px-3 font-bold ${dHigh >= 0.45 ? 'text-solana-green' : 'text-gray-300'}">${dHigh >= 0 ? '+' : ''}${dHigh.toFixed(2)}% (${cp.high_sym})</td>
             <td class="py-2 px-3 font-bold ${dLow <= -0.45 ? 'text-amber-300' : 'text-gray-300'}">${dLow >= 0 ? '+' : ''}${dLow.toFixed(2)}% (${cp.low_sym})</td>
             <td class="py-2 px-3">
