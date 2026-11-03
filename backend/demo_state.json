@@ -3,7 +3,7 @@
   "is_running": true,
   "initial_capital_sol": 1.0,
   "sol_price_usd": 95.5,
-  "rebalance_band_pct": 2.5,
+  "rebalance_band_pct": 1.0,
   "basket_allocation_sol": 0.16,
   "gas_reserve_sol": 0.04,
   "initial_gas_after_init_sol": 0.04,
@@ -24,6 +24,6 @@
   "total_cycles_completed": 0,
   "scanned_pairs_status": [],
   "trade_history": [],
-  "last_tick_time": 1793660973.8799922,
-  "created_at": 1793660973.8799922
+  "last_tick_time": 1793720020.587671,
+  "created_at": 1793720020.587671
 }

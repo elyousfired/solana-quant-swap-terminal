@@ -627,7 +627,7 @@ function renderDemoUI(state) {
   if (!state) return;
 
   const isRunning = Boolean(state.is_running);
-  const bandPct = state.rebalance_band_pct || 2.5;
+  const bandPct = state.rebalance_band_pct || 1.0;
   const solUsd = state.sol_price_usd || 95.5;
 
   // 1. Top Status & Toggle Button
@@ -876,7 +876,7 @@ function renderDemoUI(state) {
       if (item.gate_status === 'REBALANCED_50_50') {
         badgeHtml = '<span class="px-2 py-0.5 rounded bg-solana-green/20 text-solana-green border border-solana-green/40 text-[10px] font-bold">⚡ REBALANCED 50/50</span>';
       } else if (item.gate_status === 'NEAR_TRIGGER') {
-        badgeHtml = '<span class="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-bold animate-pulse">⚠️ NEAR ±2.5% BAND</span>';
+        badgeHtml = `<span class="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-bold animate-pulse">⚠️ NEAR ±${bandPct.toFixed(1)}% BAND</span>`;
       } else if (item.gate_status === 'BLOCKED_FEE_DRAG') {
         badgeHtml = '<span class="px-2 py-0.5 rounded bg-red-500/20 text-red-300 border border-red-500/40 text-[10px]">🛡️ FEE GATE HOLD</span>';
       } else if (item.gate_status === 'IN_OPTIMAL_BAND') {

@@ -194,7 +194,7 @@
               </span>
             </div>
             <p class="text-xs text-gray-400 mt-1 font-mono">
-              Equal 6-Basket Deployment: <span class="text-white font-bold">0.1600 SOL &times; 6</span> (<span class="text-solana-green font-bold">0.0800 SOL Cash</span> + <span class="text-solana-purple font-bold">0.0800 SOL Token</span>) + <span class="text-amber-300 font-bold">0.0400 SOL Gas</span>. Threshold Drift Band: <span class="text-solana-green font-bold">&plusmn;2.5% Weight Drift</span>.
+              Equal 6-Basket Deployment: <span class="text-white font-bold">0.1600 SOL &times; 6</span> (<span class="text-solana-green font-bold">0.0800 SOL Cash</span> + <span class="text-solana-purple font-bold">0.0800 SOL Token</span>) + <span class="text-amber-300 font-bold">0.0400 SOL Gas</span>. Threshold Drift Band: <span class="text-solana-green font-bold">&plusmn;1.0% Scale Drift (&asymp;&plusmn;4% Price)</span>.
             </p>
           </div>
 
@@ -219,7 +219,7 @@
             </span>
             <span class="text-gray-300">Scale: <strong class="text-white">Value = Qty &times; Live Price</strong></span>
             <span class="text-gray-500">|</span>
-            <span class="text-gray-300">Drift Trigger: <strong class="text-amber-300">|Weight &minus; 50%| &ge; 2.5% (52.5 / 47.5)</strong></span>
+            <span class="text-gray-300">Drift Trigger: <strong class="text-amber-300">|Weight &minus; 50%| &ge; 1.0% (51/49 &asymp; &plusmn;4% Price)</strong></span>
           </div>
           <div class="flex flex-wrap items-center gap-2 text-[11px] text-gray-400">
             <span>DEX Fee: <strong class="text-gray-200">0.15%</strong></span>
@@ -308,7 +308,7 @@
           <div class="flex items-center justify-between mb-3">
             <h4 class="text-xs font-bold uppercase tracking-wider text-gray-300 flex items-center gap-2">
               <i data-lucide="radar" class="w-4 h-4 text-amber-400 animate-spin"></i>
-              <span>Threshold Drift Band Monitor (&plusmn;2.5% Trigger Across All 6 Baskets):</span>
+              <span>Threshold Drift Band Monitor (&plusmn;1.0% Scale Drift &asymp; &plusmn;4% Price Across All 6 Baskets):</span>
             </h4>
             <span class="text-[11px] font-mono text-amber-400">Live Price Evaluation (Zero Time Decay)</span>
           </div>
@@ -321,7 +321,7 @@
                   <th class="py-1.5 px-3">Live Price (SOL)</th>
                   <th class="py-1.5 px-3">Price &Delta;%</th>
                   <th class="py-1.5 px-3">Scale (SOL / Token)</th>
-                  <th class="py-1.5 px-3">Drift (Band &plusmn;2.5%)</th>
+                  <th class="py-1.5 px-3">Drift (Band &plusmn;1.0%)</th>
                   <th class="py-1.5 px-3 text-right">Threshold Status</th>
                 </tr>
               </thead>
@@ -563,6 +563,6 @@
   </footer>
 
   <!-- SCRIPT -->
-  <script src="app.js?v=4.0"></script>
+  <script src="app.js?v=5.0"></script>
 </body>
 </html>

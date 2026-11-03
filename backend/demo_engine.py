@@ -50,10 +50,10 @@ INITIAL_GAS_RESERVE_SOL = 0.0400
 DEPLOYABLE_CAPITAL_SOL = INITIAL_CAPITAL_SOL - INITIAL_GAS_RESERVE_SOL  # 0.9600 SOL
 BASKET_ALLOCATION_SOL = DEPLOYABLE_CAPITAL_SOL / len(BASKET_TOKENS)     # 0.1600 SOL per basket
 
-REBALANCE_BAND_PCT = 2.5         # Threshold Drift Band: |w_token - 50%| >= 2.5%
+REBALANCE_BAND_PCT = 1.0         # Threshold Drift Band: |w_token - 50%| >= 1.0% (~4.0% price move)
 DEX_FEE_RATE = 0.0015            # 0.15% realistic Jupiter DEX swap fee
 SOL_TX_GAS_FEE = 0.000005        # 0.000005 SOL Solana network transaction fee
-MIN_REBALANCE_SOL = 0.0010       # Minimum swap size floor in SOL
+MIN_REBALANCE_SOL = 0.0008       # Minimum swap size floor in SOL
 MIN_GAS_FLOOR_SOL = 0.0010       # Minimum gas reserve floor in SOL
 
 STATE_FILE_LOCAL = os.path.join(os.path.dirname(__file__), "demo_state.json")
@@ -176,7 +176,7 @@ def evaluate_demo_tick(
     1. Deploys any uninitialized basket among [JUP, RAY, JTO, KMNO, MET, PUMP] at exact 50/50
        (0.0800 SOL Cash + 0.0800 SOL Token).
     2. Marks all 6 baskets to live Jupiter exchange rates (Value = Quantity * Live Price).
-    3. Triggers exact 50/50 Threshold Rebalancing whenever |w_token - 50.0%| >= 2.5%
+    3. Triggers exact 50/50 Threshold Rebalancing whenever |w_token - 50.0%| >= 1.0% (~4% price move)
        and Pre-Flight Fee Gate confirms positive net volatility harvest.
     4. Updates full portfolio equity, static 50/50 HODL benchmark comparison, and audit ledger.
     """
@@ -194,7 +194,9 @@ def evaluate_demo_tick(
     now = time.time()
     state["last_tick_time"] = now
 
-    band_pct = float(state.get("rebalance_band_pct", REBALANCE_BAND_PCT))
+    # Always enforce latest calibrated threshold band (1.0% weight drift = ~4.0% price move)
+    band_pct = REBALANCE_BAND_PCT
+    state["rebalance_band_pct"] = band_pct
     gas_reserve = float(state.get("gas_reserve_sol", INITIAL_GAS_RESERVE_SOL))
     initial_gas_after_init = float(state.get("initial_gas_after_init_sol", INITIAL_GAS_RESERVE_SOL))
     unallocated_cash = float(state.get("unallocated_cash_sol", 0.0))
