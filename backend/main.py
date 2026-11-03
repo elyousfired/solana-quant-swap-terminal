@@ -427,11 +427,11 @@ def get_shannon_demon(pair: str = "ALL"):
             "token_a": "SOL",
             "token_b": "JUP",
             "target_weights": {"token_a": 50.0, "token_b": 50.0},
-            "current_weights": {"token_a": 52.4, "token_b": 47.6},
-            "rebalance_band_pct": 2.0,
-            "drift_pct": 2.4,
+            "current_weights": {"token_a": 51.2, "token_b": 48.8},
+            "rebalance_band_pct": 1.0,
+            "drift_pct": 1.2,
             "action_required": True,
-            "recommended_swap": "Rebalance Trigger! Swap 2.4% excess SOL -> JUP to restore 50/50 balance",
+            "recommended_swap": "Rebalance Trigger! Swap 1.2% excess SOL -> JUP to restore 50/50 balance",
             "expected_alpha_per_cycle": "+1.85% net",
             "historical_stats": {
                 "total_cycles_completed": 48,
@@ -445,11 +445,11 @@ def get_shannon_demon(pair: str = "ALL"):
             "token_a": "SOL",
             "token_b": "JTO",
             "target_weights": {"token_a": 50.0, "token_b": 50.0},
-            "current_weights": {"token_a": 47.8, "token_b": 52.2},
-            "rebalance_band_pct": 2.0,
-            "drift_pct": 2.2,
+            "current_weights": {"token_a": 48.8, "token_b": 51.2},
+            "rebalance_band_pct": 1.0,
+            "drift_pct": 1.2,
             "action_required": True,
-            "recommended_swap": "Rebalance Trigger! Swap 2.2% excess JTO -> SOL to lock in MEV gains",
+            "recommended_swap": "Rebalance Trigger! Swap 1.2% excess JTO -> SOL to lock in MEV gains",
             "expected_alpha_per_cycle": "+2.05% net",
             "historical_stats": {
                 "total_cycles_completed": 52,
@@ -463,11 +463,11 @@ def get_shannon_demon(pair: str = "ALL"):
             "token_a": "SOL",
             "token_b": "RAY",
             "target_weights": {"token_a": 50.0, "token_b": 50.0},
-            "current_weights": {"token_a": 48.1, "token_b": 51.9},
-            "rebalance_band_pct": 2.0,
-            "drift_pct": 1.9,
+            "current_weights": {"token_a": 49.3, "token_b": 50.7},
+            "rebalance_band_pct": 1.0,
+            "drift_pct": 0.7,
             "action_required": False,
-            "recommended_swap": "In Optimal Band (1.9% < 2.0%). No swap required yet.",
+            "recommended_swap": "In Optimal Band (0.7% < 1.0%). No swap required yet.",
             "expected_alpha_per_cycle": "+2.10% net",
             "historical_stats": {
                 "total_cycles_completed": 56,
@@ -481,11 +481,11 @@ def get_shannon_demon(pair: str = "ALL"):
             "token_a": "SOL",
             "token_b": "KMNO",
             "target_weights": {"token_a": 50.0, "token_b": 50.0},
-            "current_weights": {"token_a": 52.8, "token_b": 47.2},
-            "rebalance_band_pct": 2.0,
-            "drift_pct": 2.8,
+            "current_weights": {"token_a": 51.4, "token_b": 48.6},
+            "rebalance_band_pct": 1.0,
+            "drift_pct": 1.4,
             "action_required": True,
-            "recommended_swap": "Rebalance Trigger! Swap 2.8% excess SOL -> KMNO on oversold dip",
+            "recommended_swap": "Rebalance Trigger! Swap 1.4% excess SOL -> KMNO on oversold dip",
             "expected_alpha_per_cycle": "+2.25% net",
             "historical_stats": {
                 "total_cycles_completed": 61,
@@ -499,11 +499,11 @@ def get_shannon_demon(pair: str = "ALL"):
             "token_a": "SOL",
             "token_b": "MET",
             "target_weights": {"token_a": 50.0, "token_b": 50.0},
-            "current_weights": {"token_a": 48.6, "token_b": 51.4},
-            "rebalance_band_pct": 2.0,
-            "drift_pct": 1.4,
+            "current_weights": {"token_a": 49.4, "token_b": 50.6},
+            "rebalance_band_pct": 1.0,
+            "drift_pct": 0.6,
             "action_required": False,
-            "recommended_swap": "In Optimal Band (1.4% < 2.0%). DLMM liquidity steady.",
+            "recommended_swap": "In Optimal Band (0.6% < 1.0%). DLMM liquidity steady.",
             "expected_alpha_per_cycle": "+1.95% net",
             "historical_stats": {
                 "total_cycles_completed": 49,
@@ -517,11 +517,11 @@ def get_shannon_demon(pair: str = "ALL"):
             "token_a": "SOL",
             "token_b": "PUMP",
             "target_weights": {"token_a": 50.0, "token_b": 50.0},
-            "current_weights": {"token_a": 46.2, "token_b": 53.8},
-            "rebalance_band_pct": 2.5,
-            "drift_pct": 3.8,
+            "current_weights": {"token_a": 48.2, "token_b": 51.8},
+            "rebalance_band_pct": 1.0,
+            "drift_pct": 1.8,
             "action_required": True,
-            "recommended_swap": "High Volatility Spike! Swap 3.8% excess PUMP -> SOL to harvest launchpad surge",
+            "recommended_swap": "High Volatility Spike! Swap 1.8% excess PUMP -> SOL to harvest launchpad surge",
             "expected_alpha_per_cycle": "+3.65% net",
             "historical_stats": {
                 "total_cycles_completed": 88,
@@ -535,11 +535,11 @@ def get_shannon_demon(pair: str = "ALL"):
             "token_a": "SOL",
             "token_b": "USDC",
             "target_weights": {"token_a": 50.0, "token_b": 50.0},
-            "current_weights": {"token_a": 51.8, "token_b": 48.2},
-            "rebalance_band_pct": 1.5,
-            "drift_pct": 1.8,
+            "current_weights": {"token_a": 51.1, "token_b": 48.9},
+            "rebalance_band_pct": 1.0,
+            "drift_pct": 1.1,
             "action_required": True,
-            "recommended_swap": "Classic Shannon Rebalance: Swap 1.8% SOL -> USDC Cash Reserve",
+            "recommended_swap": "Classic Shannon Rebalance: Swap 1.1% SOL -> USDC Cash Reserve",
             "expected_alpha_per_cycle": "+1.25% net",
             "historical_stats": {
                 "total_cycles_completed": 34,
@@ -567,23 +567,23 @@ def get_shannon_demon(pair: str = "ALL"):
         base_r = base_ratios.get(pair_key, 0.00262)
         current_r = (p_b / p_a) if p_a > 0 else base_r
         
-        # Live dynamic drift calculation
-        raw_drift = ((current_r - base_r) / base_r) * 50.0 if base_r > 0 else 0.0
-        weight_b = round(50.0 + raw_drift, 1)
+        # Exact 50/50 Value Scale formula (homogeneous with demo_engine.py):
+        rel = (current_r / base_r) if base_r > 0 else 1.0
+        weight_b = round((rel / (1.0 + rel)) * 100.0, 2)
         weight_b = max(20.0, min(80.0, weight_b))
-        weight_a = round(100.0 - weight_b, 1)
-        abs_drift = round(abs(weight_a - 50.0), 1)
+        weight_a = round(100.0 - weight_b, 2)
+        abs_drift = round(abs(weight_b - 50.0), 2)
         
         band = cfg["rebalance_band_pct"]
         action_req = abs_drift >= band
         
         if action_req:
             if weight_a > 50.0:
-                rec = f"Swap {abs_drift}% excess {token_a} -> {token_b}"
+                rec = f"Swap {abs_drift:.2f}% excess {token_a} -> {token_b}"
             else:
-                rec = f"Swap {abs_drift}% excess {token_b} -> {token_a}"
+                rec = f"Swap {abs_drift:.2f}% excess {token_b} -> {token_a}"
         else:
-            rec = f"Balanced (Drift {abs_drift}% < {band}%)"
+            rec = f"Balanced (Drift {abs_drift:.2f}% < {band:.1f}%)"
             
         cfg["current_weights"] = {"token_a": weight_a, "token_b": weight_b}
         cfg["drift_pct"] = abs_drift

@@ -5,42 +5,22 @@ Portfolios across:
   - 6 Direct SOL / Token 50/50 Baskets (JUP, RAY, JTO, KMNO, MET, PUMP)
   - 15 Cross-Token Pairs (N*(N-1)/2 = 15 direct Token A -> Token B rotation channels)
 
-Core Strategy Architecture (The Triangular Kinetic Flywheel: SOL -> Token A -> Token B -> SOL):
-1. Equal 6-Basket Simultaneous Deployment (1.0000 SOL Initial Capital):
-   - Dedicated Solana Network Gas Reserve: 0.0400 SOL (4.0% untouched gas buffer).
-   - Deployable Capital: 0.9600 SOL split equally across 6 volatile Solana pairs:
-     [JUP, RAY, JTO, KMNO, MET, PUMP] -> Exact 0.1600 SOL per Basket.
-   - Inside Every Basket (50% / 50% Value Scale at Entry):
-     * Kaffa 1 (SOL Cash Anchor): 0.0800 SOL liquid cash held inside the basket.
-     * Kaffa 2 (Volatile Token):  0.0800 SOL swapped into the basket's token at live Jupiter price
-       (net of realistic 0.15% DEX swap fee + 0.000005 SOL network tx fee).
-
-2. Pure Price-Driven Value Scale (الميزان = Quantity × Live Price):
-   - At every live tick, for basket i with live exchange rate P_t (SOL per 1 Token):
-     * Cash Value:   C_t = slot_cash (SOL)
-     * Token Value:  V_t = tokens_held * P_t (SOL)
-     * Basket Equity: E_t = C_t + V_t (SOL)
-     * Token Weight: w_token = (V_t / E_t) * 100%
-     * Cash Weight:  w_cash  = (C_t / E_t) * 100%
-     * Drift:        Drift   = w_token - 50.0%
-
-3. Phase A — 6-Basket Direct SOL Threshold Rebalancing (|Drift| >= 1.0%, i.e. 51% / 49%):
-   - Triggers whenever |w_token - 50.0%| >= REBALANCE_BAND_PCT (1.0%):
-     * Exact Rebalance Trade Size: delta_sol = |V_t - C_t| / 2.0
-     * Pre-Flight Fee Gate verifies expected volatility harvest exceeds total swap + gas friction.
-     * If Drift >= +1.0%: Sells excess tokens directly into basket's SOL cash & resets cross_buy_streak = 0.
-     * If Drift <= -1.0%: Spends excess SOL cash to buy discounted tokens & restores 50/50.
-
-4. Phase B — 15-Pair Cross-Token Triangular Kinetic Engine (Token A -> Token B):
-   - When individual tokens haven't crossed ±1.0% against SOL alone, scans all 15 relative pairs (6 × 5 / 2)
-     for opposite scale tilts inside the band:
-     * Opposite-Tilt Filter: Drift_A >= +0.45% (Token A overweight) AND Drift_B <= -0.45% (Token B underweight).
-     * Relative Spread Trigger: (Drift_A - Drift_B) >= 1.10% (~4.4% relative price divergence).
-     * Anti-Bleed Cap: Token B consecutive cross-buy streak < 2 (resets when B sells excess to SOL or donates).
-   - Executes a 1-hop direct swap (Token A -> Token B) of exact equilibrium size:
-     * delta_swap = min(V_A - C_A, C_B - V_B)
-     * Pays only 1 DEX fee (0.15%) instead of 2, trimming high Token A and pre-loading cheap Token B coins
-       into Basket B so that when Token B rebounds, Phase A triggers >= +1.0% drift and harvests pure SOL cash!
+Execution Priority Waterfall (شلال الأسبقية الثلاثي — Zero Conflict Architecture):
+  - Stage 1 (Triangle Cash-Out to SOL):
+      If a basket previously accumulated cheap tokens via Cross-Swap (cross_buy_streak > 0) and
+      rebounds to Drift >= +1.0% against SOL, it immediately closes the 3rd leg of the triangle
+      (Token B -> SOL Cash) and resets cross_buy_streak = 0.
+  - Stage 2 (Priority #1 — 15-Pair Direct Cross-Swap Token A -> Token B):
+      Scans all 15 relative pairs for opposite tilts (Drift_A >= +0.45% and Drift_B <= -0.45%)
+      with Spread Drift (Drift_A - Drift_B) >= 1.10% and streak_B < 2.
+      Executes a 1-hop direct swap (Token A -> Token B) for delta_swap = min(V_A - C_A, C_B - V_B),
+      saving 50% of swap & gas fees while filling Basket B at the bottom.
+  - Stage 3 (Priority #2 — Residual & Standalone Direct SOL Rebalance |Drift| >= 1.0%):
+      Re-reads all 6 basket scales immediately in the same tick:
+        * Standalone moves (no opposite partner, e.g. PUMP +15% alone) rebalance directly with SOL.
+        * Residual Drift (e.g. KMNO had +0.0073 SOL excess, gave 0.0019 SOL to MET in Priority #1,
+          and still has +0.0054 SOL residual excess >= +1.0% drift) sells the remaining excess
+          directly into SOL Cash in the very same tick!
 """
 
 import os
@@ -186,24 +166,98 @@ def sync_demo_state(client_state: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     return load_demo_state()
 
 
+def _execute_sol_sell_excess(
+    sym: str,
+    slot: Dict[str, Any],
+    curr_ratio: float,
+    band_pct: float,
+    gas_reserve: float,
+    now: float,
+    cycles: int,
+    total_alpha: float,
+    total_fees_paid: float,
+    trade_history: List[Dict[str, Any]],
+    reason_prefix: str = "Drift",
+):
+    """Helper to sell excess token value above 50% directly into the basket's SOL cash."""
+    cash_val = float(slot["slot_cash"])
+    tokens_held = float(slot["tokens_held"])
+    token_val = tokens_held * curr_ratio
+    slot_equity = cash_val + token_val
+    if slot_equity <= 0 or curr_ratio <= 0 or token_val <= cash_val:
+        return False, gas_reserve, cycles, total_alpha, total_fees_paid, False
+
+    w_token = (token_val / slot_equity) * 100.0
+    drift = w_token - 50.0
+    abs_drift = abs(drift)
+    if drift < band_pct:
+        return False, gas_reserve, cycles, total_alpha, total_fees_paid, False
+
+    ref_ratio = float(slot.get("last_rebal_ratio") or slot.get("entry_ratio") or curr_ratio)
+    price_chg_ref_pct = ((curr_ratio - ref_ratio) / ref_ratio) * 100.0 if ref_ratio > 0 else 0.0
+
+    delta_sol = (token_val - cash_val) / 2.0
+    dex_fee = delta_sol * DEX_FEE_RATE
+    total_fee = dex_fee + SOL_TX_GAS_FEE
+    rel_move = max(abs(price_chg_ref_pct) / 100.0, (4.0 * abs_drift) / 100.0)
+    gross_step_alpha = 0.5 * delta_sol * rel_move
+
+    if delta_sol < MIN_REBALANCE_SOL or gas_reserve < MIN_GAS_FLOOR_SOL or total_fee >= gross_step_alpha:
+        return False, gas_reserve, cycles, total_alpha, total_fees_paid, True
+
+    tokens_to_sell = min(tokens_held, delta_sol / curr_ratio)
+    gross_sol_out = tokens_to_sell * curr_ratio
+    actual_dex_fee = gross_sol_out * DEX_FEE_RATE
+    net_sol_out = gross_sol_out - actual_dex_fee
+    actual_total_fee = actual_dex_fee + SOL_TX_GAS_FEE
+
+    tokens_held -= tokens_to_sell
+    cash_val += net_sol_out
+    gas_reserve -= SOL_TX_GAS_FEE
+
+    net_step_alpha = max(0.0, gross_step_alpha - actual_total_fee)
+    slot["slot_cash"] = cash_val
+    slot["tokens_held"] = tokens_held
+    slot["last_rebal_ratio"] = curr_ratio
+    slot["cross_buy_streak"] = 0
+    slot["harvested_alpha_sol"] = float(slot.get("harvested_alpha_sol", 0.0)) + net_step_alpha
+    slot["fees_paid_sol"] = float(slot.get("fees_paid_sol", 0.0)) + actual_total_fee
+    slot["cycles_completed"] = int(slot.get("cycles_completed", 0)) + 1
+    slot["last_action"] = f"SELL +{abs_drift:.2f}% -> 50/50"
+
+    total_alpha += net_step_alpha
+    total_fees_paid += actual_total_fee
+    cycles += 1
+
+    trade_history.insert(
+        0,
+        {
+            "id": f"rebal_sell_{int(now * 1000)}_{sym}_{cycles}",
+            "time": now,
+            "type": "SHANNON_SELL_EXCESS",
+            "symbol": sym,
+            "action": f"Sell Excess {sym}: -{tokens_to_sell:,.2f} {sym} -> +{net_sol_out:.4f} SOL",
+            "tranche_sol": round(gross_sol_out, 4),
+            "tokens_traded": round(tokens_to_sell, 4),
+            "ratio": curr_ratio,
+            "net_profit_sol": round(net_step_alpha, 6),
+            "reason": f"{reason_prefix} +{abs_drift:.2f}% (Price +{abs(price_chg_ref_pct):.1f}%) >= {band_pct}% Band -> Restored 50/50",
+        },
+    )
+    return True, gas_reserve, cycles, total_alpha, total_fees_paid, False
+
+
 def evaluate_demo_tick(
     live_pairs: List[Dict[str, Any]],
     sol_usd: float,
     client_state: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
-    Executes one live tick of the Pure Claude Shannon 6-Basket 50/50 + 15 Cross-Pair Triangular Engine:
-    1. Initializes any unallocated basket among [JUP, RAY, JTO, KMNO, MET, PUMP] at 50/50
-       (0.0800 SOL Cash + 0.0800 SOL Token).
-    2. Updates all 6 baskets with live Jupiter exchange rates (Value = Quantity * Live Price).
-    3. Phase A (6 Direct SOL/Token Baskets): Triggers exact 50/50 Threshold Rebalancing whenever
-       |w_token - 50.0%| >= 1.0% (~4% price move) and Pre-Flight Fee Gate passes (harvesting pumps
-       directly into SOL cash or buying deep dips with SOL cash).
-    4. Phase B (15 Cross-Token Pairs Rotation): For sub-threshold opposite tilts inside the band
-       (Drift_A >= +0.45%, Drift_B <= -0.45%, Drift_A - Drift_B >= 1.10%, streak_B < 2),
-       executes direct 1-hop Token A -> Token B swaps, pre-loading Basket B with cheap coins so
-       any rebound in B crosses +1.0% drift and harvests pure SOL cash in Phase A!
-    5. Updates coin quantity histories, static 50/50 HODL benchmark surplus, and execution ledger.
+    Executes one live tick of the Pure Claude Shannon 6-Basket 50/50 + 15 Cross-Pair Triangular Engine
+    using the 3-Stage Execution Priority Waterfall:
+      - Stage 1: Triangle Cash-Out into SOL (for cross-loaded baskets with streak > 0 that bounced >= +1.0%).
+      - Stage 2 (Priority #1): 15 Cross-Token Pairs Direct Swap (Token A -> Token B) for opposite tilts.
+      - Stage 3 (Priority #2): Residual & Standalone Direct SOL Rebalancing (|Drift| >= 1.0%).
     """
     if _is_valid_strategy_state(client_state):
         state = client_state
@@ -267,7 +321,6 @@ def evaluate_demo_tick(
         basket_cap = min(BASKET_ALLOCATION_SOL, unallocated_cash)
         unallocated_cash = max(0.0, unallocated_cash - basket_cap)
 
-        # 50% stays as liquid SOL Cash Anchor, 50% swaps into Token at live price
         cash_half = basket_cap * 0.50
         token_half_gross = basket_cap * 0.50
         dex_fee = token_half_gross * DEX_FEE_RATE
@@ -330,146 +383,56 @@ def evaluate_demo_tick(
             },
         )
 
-    # -------------------------------------------------------------------------
-    # STEP 2A: UPDATE LIVE PRICES & DIRECT SOL THRESHOLD REBALANCING (|Drift| >= 1.0%)
-    # -------------------------------------------------------------------------
-    rebalanced_sol_this_tick = set()
-    fee_blocked_sol_this_tick = set()
-    any_rebalanced_this_tick = False
-
+    # Update live exchange rates across all 6 baskets
     for sym in BASKET_TOKENS:
         slot = active_slots.get(sym)
         if not slot:
             continue
-
         p_data = pairs_by_base.get(sym)
         if p_data and float(p_data.get("current_ratio", 0.0)) > 0:
-            curr_ratio = float(p_data["current_ratio"])
-            slot["current_ratio"] = curr_ratio
-        else:
-            curr_ratio = float(slot["current_ratio"])
+            slot["current_ratio"] = float(p_data["current_ratio"])
 
-        cash_val = float(slot["slot_cash"])
-        tokens_held = float(slot["tokens_held"])
-        token_val = tokens_held * curr_ratio
-        slot_equity = cash_val + token_val
-
-        w_token = (token_val / slot_equity) * 100.0 if slot_equity > 0 else 50.0
-        drift = w_token - 50.0
-        abs_drift = abs(drift)
-
-        ref_ratio = float(slot.get("last_rebal_ratio") or slot.get("entry_ratio") or curr_ratio)
-        price_chg_ref_pct = ((curr_ratio - ref_ratio) / ref_ratio) * 100.0 if ref_ratio > 0 else 0.0
-
-        # Direct SOL / Token Threshold Band Trigger: |w_token - 50.0%| >= band_pct (1.0%)
-        if abs_drift >= band_pct and slot_equity > 0 and curr_ratio > 0:
-            delta_sol = abs(token_val - cash_val) / 2.0
-            dex_fee = delta_sol * DEX_FEE_RATE
-            total_fee = dex_fee + SOL_TX_GAS_FEE
-
-            rel_move = max(abs(price_chg_ref_pct) / 100.0, (4.0 * abs_drift) / 100.0)
-            gross_step_alpha = 0.5 * delta_sol * rel_move
-
-            if (
-                delta_sol >= MIN_REBALANCE_SOL
-                and gas_reserve >= MIN_GAS_FLOOR_SOL
-                and total_fee < gross_step_alpha
-            ):
-                if drift > 0:
-                    # TOKEN PUMPED -> Token Kaffa > 50% -> Sell exact excess tokens into SOL Cash
-                    tokens_to_sell = min(tokens_held, delta_sol / curr_ratio)
-                    gross_sol_out = tokens_to_sell * curr_ratio
-                    actual_dex_fee = gross_sol_out * DEX_FEE_RATE
-                    net_sol_out = gross_sol_out - actual_dex_fee
-                    actual_total_fee = actual_dex_fee + SOL_TX_GAS_FEE
-
-                    tokens_held -= tokens_to_sell
-                    cash_val += net_sol_out
-                    gas_reserve -= SOL_TX_GAS_FEE
-
-                    net_step_alpha = max(0.0, gross_step_alpha - actual_total_fee)
-                    slot["slot_cash"] = cash_val
-                    slot["tokens_held"] = tokens_held
-                    slot["last_rebal_ratio"] = curr_ratio
-                    slot["cross_buy_streak"] = 0  # Reset bleed streak upon harvesting into SOL!
-                    slot["harvested_alpha_sol"] = float(slot.get("harvested_alpha_sol", 0.0)) + net_step_alpha
-                    slot["fees_paid_sol"] = float(slot.get("fees_paid_sol", 0.0)) + actual_total_fee
-                    slot["cycles_completed"] = int(slot.get("cycles_completed", 0)) + 1
-                    slot["last_action"] = f"SELL +{abs_drift:.2f}% -> 50/50"
-
-                    total_alpha += net_step_alpha
-                    total_fees_paid += actual_total_fee
-                    cycles += 1
-                    rebalanced_sol_this_tick.add(sym)
-                    any_rebalanced_this_tick = True
-
-                    trade_history.insert(
-                        0,
-                        {
-                            "id": f"rebal_sell_{int(now * 1000)}_{sym}_{cycles}",
-                            "time": now,
-                            "type": "SHANNON_SELL_EXCESS",
-                            "symbol": sym,
-                            "action": f"Sell Excess {sym}: -{tokens_to_sell:,.2f} {sym} -> +{net_sol_out:.4f} SOL",
-                            "tranche_sol": round(gross_sol_out, 4),
-                            "tokens_traded": round(tokens_to_sell, 4),
-                            "ratio": curr_ratio,
-                            "net_profit_sol": round(net_step_alpha, 6),
-                            "reason": f"Drift +{abs_drift:.2f}% (Price +{abs(price_chg_ref_pct):.1f}%) >= {band_pct}% Band -> Restored 50/50",
-                        },
-                    )
-                else:
-                    # TOKEN DROPPED -> Token Kaffa < 50% -> Spend excess SOL Cash to buy cheap tokens
-                    if cash_val >= delta_sol:
-                        actual_dex_fee = delta_sol * DEX_FEE_RATE
-                        net_sol_in = delta_sol - actual_dex_fee
-                        tokens_bought = net_sol_in / curr_ratio
-                        actual_total_fee = actual_dex_fee + SOL_TX_GAS_FEE
-
-                        cash_val -= delta_sol
-                        tokens_held += tokens_bought
-                        gas_reserve -= SOL_TX_GAS_FEE
-
-                        net_step_alpha = max(0.0, gross_step_alpha - actual_total_fee)
-                        slot["slot_cash"] = cash_val
-                        slot["tokens_held"] = tokens_held
-                        slot["last_rebal_ratio"] = curr_ratio
-                        slot["harvested_alpha_sol"] = float(slot.get("harvested_alpha_sol", 0.0)) + net_step_alpha
-                        slot["fees_paid_sol"] = float(slot.get("fees_paid_sol", 0.0)) + actual_total_fee
-                        slot["cycles_completed"] = int(slot.get("cycles_completed", 0)) + 1
-                        slot["last_action"] = f"BUY -{abs_drift:.2f}% -> 50/50"
-
-                        total_alpha += net_step_alpha
-                        total_fees_paid += actual_total_fee
-                        cycles += 1
-                        rebalanced_sol_this_tick.add(sym)
-                        any_rebalanced_this_tick = True
-
-                        trade_history.insert(
-                            0,
-                            {
-                                "id": f"rebal_buy_{int(now * 1000)}_{sym}_{cycles}",
-                                "time": now,
-                                "type": "SHANNON_BUY_DIP",
-                                "symbol": sym,
-                                "action": f"Buy Discount {sym}: -{delta_sol:.4f} SOL -> +{tokens_bought:,.2f} {sym}",
-                                "tranche_sol": round(delta_sol, 4),
-                                "tokens_traded": round(tokens_bought, 4),
-                                "ratio": curr_ratio,
-                                "net_profit_sol": round(net_step_alpha, 6),
-                                "reason": f"Drift -{abs_drift:.2f}% (Price -{abs(price_chg_ref_pct):.1f}%) <= -{band_pct}% Band -> Restored 50/50",
-                            },
-                        )
-            else:
-                fee_blocked_sol_this_tick.add(sym)
+    rebalanced_sol_this_tick = set()
+    fee_blocked_sol_this_tick = set()
+    used_in_cross_this_tick = set()
+    executed_cross_pair_keys = set()
+    any_rebalanced_this_tick = False
 
     # -------------------------------------------------------------------------
-    # STEP 2B: 15 CROSS-TOKEN PAIRS TRIANGULAR ROTATION (Token A -> Token B)
+    # STAGE 1: TRIANGLE CASH-OUT INTO SOL (Leg 3 of SOL -> A -> B -> SOL)
+    # Any basket with cross_buy_streak > 0 that bounced >= +1.0% harvests into SOL first
     # -------------------------------------------------------------------------
-    all_cross_pairs_info: List[Dict[str, Any]] = []
+    for sym in BASKET_TOKENS:
+        slot = active_slots.get(sym)
+        if not slot or int(slot.get("cross_buy_streak", 0)) <= 0:
+            continue
+        curr_ratio = float(slot["current_ratio"])
+        did_sell, gas_reserve, cycles, total_alpha, total_fees_paid, blocked = _execute_sol_sell_excess(
+            sym=sym,
+            slot=slot,
+            curr_ratio=curr_ratio,
+            band_pct=band_pct,
+            gas_reserve=gas_reserve,
+            now=now,
+            cycles=cycles,
+            total_alpha=total_alpha,
+            total_fees_paid=total_fees_paid,
+            trade_history=trade_history,
+            reason_prefix="Triangle Cash-Out Drift",
+        )
+        if did_sell:
+            rebalanced_sol_this_tick.add(sym)
+            any_rebalanced_this_tick = True
+        elif blocked:
+            fee_blocked_sol_this_tick.add(sym)
+
+    # -------------------------------------------------------------------------
+    # STAGE 2 (PRIORITY #1): 15-PAIR DIRECT CROSS-SWAP (Token A -> Token B)
+    # Matches overweight Token A with underweight Token B in 1 single hop (50% fee saved)
+    # -------------------------------------------------------------------------
     candidate_cross_pairs: List[Dict[str, Any]] = []
-
     present_syms = [s for s in BASKET_TOKENS if s in active_slots]
+
     for i in range(len(present_syms)):
         for j in range(i + 1, len(present_syms)):
             s1, s2 = present_syms[i], present_syms[j]
@@ -495,35 +458,20 @@ def evaluate_demo_tick(
                 d_high, d_low = d2, d1
 
             spread_drift = d_high - d_low
-            rel_price_spread_pct = spread_drift * 4.0
             streak_low = int(active_slots[low_sym].get("cross_buy_streak", 0))
 
-            is_opposite_tilt = (d_high >= cross_min_tilt) and (d_low <= -cross_min_tilt)
-            is_spread_ready = spread_drift >= cross_band_pct
-            is_bleed_safe = streak_low < max_streak
-
-            pair_info = {
-                "pair": f"{high_sym} -> {low_sym}",
-                "high_sym": high_sym,
-                "low_sym": low_sym,
-                "drift_high_pct": round(d_high, 2),
-                "drift_low_pct": round(d_low, 2),
-                "spread_drift_pct": round(spread_drift, 2),
-                "rel_price_spread_pct": round(rel_price_spread_pct, 2),
-                "streak_low": streak_low,
-                "max_streak": max_streak,
-                "is_opposite_tilt": is_opposite_tilt,
-                "status": "READY_CROSS_SWAP" if (is_opposite_tilt and is_spread_ready and is_bleed_safe)
-                else ("BLEED_CAP_HOLD" if (is_opposite_tilt and is_spread_ready and not is_bleed_safe)
-                      else ("WATCHING_SPREAD" if is_opposite_tilt else "NEUTRAL")),
-            }
-            all_cross_pairs_info.append(pair_info)
-
-            if is_opposite_tilt and is_spread_ready and is_bleed_safe:
-                candidate_cross_pairs.append(pair_info)
+            if (d_high >= cross_min_tilt) and (d_low <= -cross_min_tilt) and (spread_drift >= cross_band_pct) and (streak_low < max_streak):
+                candidate_cross_pairs.append(
+                    {
+                        "high_sym": high_sym,
+                        "low_sym": low_sym,
+                        "drift_high_pct": round(d_high, 2),
+                        "drift_low_pct": round(d_low, 2),
+                        "spread_drift_pct": round(spread_drift, 2),
+                    }
+                )
 
     candidate_cross_pairs.sort(key=lambda x: x["spread_drift_pct"], reverse=True)
-    used_in_cross_this_tick = set()
 
     for cand in candidate_cross_pairs:
         sym_a = cand["high_sym"]
@@ -564,14 +512,28 @@ def evaluate_demo_tick(
         net_sol_equiv = gross_sol_equiv - actual_dex_fee
         tokens_b_bought = net_sol_equiv / ratio_b
 
-        slot_a["tokens_held"] = tok_a - tokens_a_sold
-        slot_b["tokens_held"] = tok_b + tokens_b_bought
+        new_tok_a = tok_a - tokens_a_sold
+        new_tok_b = tok_b + tokens_b_bought
+        slot_a["tokens_held"] = new_tok_a
+        slot_b["tokens_held"] = new_tok_b
         gas_reserve -= SOL_TX_GAS_FEE
 
         net_cross_alpha = max(0.0, gross_cross_alpha - actual_total_fee)
 
-        slot_a["last_rebal_ratio"] = ratio_a
-        slot_b["last_rebal_ratio"] = ratio_b
+        # Check remaining drift on A and B after Cross-Swap; if within band, update last_rebal_ratio
+        # (If A still has a large Residual Drift >= band_pct, Stage 3 will harvest it into SOL Cash!)
+        new_val_a = new_tok_a * ratio_a
+        new_eq_a = cash_a + new_val_a
+        rem_drift_a = abs(((new_val_a / new_eq_a) * 100.0) - 50.0) if new_eq_a > 0 else 0.0
+        if rem_drift_a < band_pct:
+            slot_a["last_rebal_ratio"] = ratio_a
+
+        new_val_b = new_tok_b * ratio_b
+        new_eq_b = cash_b + new_val_b
+        rem_drift_b = abs(((new_val_b / new_eq_b) * 100.0) - 50.0) if new_eq_b > 0 else 0.0
+        if rem_drift_b < band_pct:
+            slot_b["last_rebal_ratio"] = ratio_b
+
         slot_a["cross_buy_streak"] = 0
         slot_b["cross_buy_streak"] = int(slot_b.get("cross_buy_streak", 0)) + 1
 
@@ -595,7 +557,7 @@ def evaluate_demo_tick(
         any_rebalanced_this_tick = True
         used_in_cross_this_tick.add(sym_a)
         used_in_cross_this_tick.add(sym_b)
-        cand["status"] = "EXECUTED_CROSS_SWAP"
+        executed_cross_pair_keys.add(tuple(sorted([sym_a, sym_b])))
 
         trade_history.insert(
             0,
@@ -610,16 +572,114 @@ def evaluate_demo_tick(
                 "ratio": round(ratio_a / ratio_b, 6) if ratio_b > 0 else ratio_a,
                 "net_profit_sol": round(net_cross_alpha, 6),
                 "reason": (
-                    f"15-Pair Spread +{spread_drift:.2f}% ({sym_a} {cand['drift_high_pct']:+.2f}% vs "
+                    f"Priority #1 Cross Spread +{spread_drift:.2f}% ({sym_a} {cand['drift_high_pct']:+.2f}% vs "
                     f"{sym_b} {cand['drift_low_pct']:+.2f}%) | Streak {slot_b['cross_buy_streak']}/{max_streak}"
                 ),
             },
         )
 
-    all_cross_pairs_info.sort(key=lambda x: x["spread_drift_pct"], reverse=True)
+    # -------------------------------------------------------------------------
+    # STAGE 3 (PRIORITY #2): RESIDUAL & STANDALONE DIRECT SOL REBALANCE (|Drift| >= 1.0%)
+    # Re-reads all 6 baskets after Priority #1 and harvests any residual or standalone drift into SOL
+    # -------------------------------------------------------------------------
+    for sym in BASKET_TOKENS:
+        slot = active_slots.get(sym)
+        if not slot:
+            continue
+
+        curr_ratio = float(slot["current_ratio"])
+        cash_val = float(slot["slot_cash"])
+        tokens_held = float(slot["tokens_held"])
+        token_val = tokens_held * curr_ratio
+        slot_equity = cash_val + token_val
+
+        w_token = (token_val / slot_equity) * 100.0 if slot_equity > 0 else 50.0
+        drift = w_token - 50.0
+        abs_drift = abs(drift)
+
+        if abs_drift < band_pct or slot_equity <= 0 or curr_ratio <= 0:
+            continue
+
+        ref_ratio = float(slot.get("last_rebal_ratio") or slot.get("entry_ratio") or curr_ratio)
+        price_chg_ref_pct = ((curr_ratio - ref_ratio) / ref_ratio) * 100.0 if ref_ratio > 0 else 0.0
+        reason_lbl = "Residual Drift" if sym in used_in_cross_this_tick else "Drift"
+
+        if drift > 0:
+            did_sell, gas_reserve, cycles, total_alpha, total_fees_paid, blocked = _execute_sol_sell_excess(
+                sym=sym,
+                slot=slot,
+                curr_ratio=curr_ratio,
+                band_pct=band_pct,
+                gas_reserve=gas_reserve,
+                now=now,
+                cycles=cycles,
+                total_alpha=total_alpha,
+                total_fees_paid=total_fees_paid,
+                trade_history=trade_history,
+                reason_prefix=reason_lbl,
+            )
+            if did_sell:
+                rebalanced_sol_this_tick.add(sym)
+                any_rebalanced_this_tick = True
+            elif blocked:
+                fee_blocked_sol_this_tick.add(sym)
+        else:
+            delta_sol = (cash_val - token_val) / 2.0
+            dex_fee = delta_sol * DEX_FEE_RATE
+            total_fee = dex_fee + SOL_TX_GAS_FEE
+            rel_move = max(abs(price_chg_ref_pct) / 100.0, (4.0 * abs_drift) / 100.0)
+            gross_step_alpha = 0.5 * delta_sol * rel_move
+
+            if (
+                delta_sol >= MIN_REBALANCE_SOL
+                and gas_reserve >= MIN_GAS_FLOOR_SOL
+                and total_fee < gross_step_alpha
+                and cash_val >= delta_sol
+            ):
+                actual_dex_fee = delta_sol * DEX_FEE_RATE
+                net_sol_in = delta_sol - actual_dex_fee
+                tokens_bought = net_sol_in / curr_ratio
+                actual_total_fee = actual_dex_fee + SOL_TX_GAS_FEE
+
+                cash_val -= delta_sol
+                tokens_held += tokens_bought
+                gas_reserve -= SOL_TX_GAS_FEE
+
+                net_step_alpha = max(0.0, gross_step_alpha - actual_total_fee)
+                slot["slot_cash"] = cash_val
+                slot["tokens_held"] = tokens_held
+                slot["last_rebal_ratio"] = curr_ratio
+                slot["harvested_alpha_sol"] = float(slot.get("harvested_alpha_sol", 0.0)) + net_step_alpha
+                slot["fees_paid_sol"] = float(slot.get("fees_paid_sol", 0.0)) + actual_total_fee
+                slot["cycles_completed"] = int(slot.get("cycles_completed", 0)) + 1
+                slot["last_action"] = f"BUY -{abs_drift:.2f}% -> 50/50"
+
+                total_alpha += net_step_alpha
+                total_fees_paid += actual_total_fee
+                cycles += 1
+                rebalanced_sol_this_tick.add(sym)
+                any_rebalanced_this_tick = True
+
+                trade_history.insert(
+                    0,
+                    {
+                        "id": f"rebal_buy_{int(now * 1000)}_{sym}_{cycles}",
+                        "time": now,
+                        "type": "SHANNON_BUY_DIP",
+                        "symbol": sym,
+                        "action": f"Buy Discount {sym}: -{delta_sol:.4f} SOL -> +{tokens_bought:,.2f} {sym}",
+                        "tranche_sol": round(delta_sol, 4),
+                        "tokens_traded": round(tokens_bought, 4),
+                        "ratio": curr_ratio,
+                        "net_profit_sol": round(net_step_alpha, 6),
+                        "reason": f"{reason_lbl} -{abs_drift:.2f}% (Price -{abs(price_chg_ref_pct):.1f}%) <= -{band_pct}% Band -> Restored 50/50",
+                    },
+                )
+            else:
+                fee_blocked_sol_this_tick.add(sym)
 
     # -------------------------------------------------------------------------
-    # STEP 2C: UPDATE FINAL SLOT METRICS, COIN HISTORIES & RADAR STATUS
+    # STAGE 4: COMPUTE FINAL 6-BASKET & 15-CROSS-PAIR LIVE TELEMETRY
     # -------------------------------------------------------------------------
     scanned_status: List[Dict[str, Any]] = []
 
@@ -668,7 +728,6 @@ def evaluate_demo_tick(
         rebalanced_this_tick = (sym in rebalanced_sol_this_tick) or (sym in used_in_cross_this_tick)
         fee_blocked_this_tick = sym in fee_blocked_sol_this_tick
 
-        # Track token quantity delta & history for mini-chart
         init_tok = float(slot.get("initial_tokens", tokens_held))
         tok_delta = tokens_held - init_tok
         tok_delta_pct = ((tok_delta / init_tok) * 100.0) if init_tok > 0 else 0.0
@@ -682,7 +741,6 @@ def evaluate_demo_tick(
             q_hist.append(round(tokens_held, 4))
         slot["qty_history"] = q_hist[-30:]
 
-        # Persist updated display metrics on slot (keeping full precision on slot_cash & tokens_held)
         slot_cap = float(slot.get("slot_capital", BASKET_ALLOCATION_SOL))
         pnl_sol = slot_equity - slot_cap
         pnl_pct = (pnl_sol / slot_cap) * 100.0 if slot_cap > 0 else 0.0
@@ -697,12 +755,12 @@ def evaluate_demo_tick(
         slot["pnl_pct"] = round(pnl_pct, 2)
 
         progress_pct = min(100.0, round((abs_drift / band_pct) * 100.0, 1)) if band_pct > 0 else 0.0
-        if sym in used_in_cross_this_tick:
-            gate_status = "CROSS_ROTATED"
-            status_text = f"CROSS-SWAP 50/50 ({slot.get('last_action', 'ROTATED')})"
-        elif sym in rebalanced_sol_this_tick:
+        if sym in rebalanced_sol_this_tick:
             gate_status = "REBALANCED_50_50"
             status_text = f"REBALANCED -> 50.0% / 50.0% ({slot['cycles_completed']} cycles)"
+        elif sym in used_in_cross_this_tick:
+            gate_status = "CROSS_ROTATED"
+            status_text = f"CROSS-SWAP 50/50 ({slot.get('last_action', 'ROTATED')})"
         elif fee_blocked_this_tick:
             gate_status = "BLOCKED_FEE_DRAG"
             status_text = "HOLDING: Fee Gate protecting micro-swap"
@@ -735,8 +793,61 @@ def evaluate_demo_tick(
             }
         )
 
+    # Build final post-tick 15 cross-pair telemetry sorted by spread_drift_pct descending
+    all_cross_pairs_info: List[Dict[str, Any]] = []
+    for i in range(len(present_syms)):
+        for j in range(i + 1, len(present_syms)):
+            s1, s2 = present_syms[i], present_syms[j]
+            slot1, slot2 = active_slots[s1], active_slots[s2]
+            d1 = float(slot1.get("drift_pct", 0.0))
+            d2 = float(slot2.get("drift_pct", 0.0))
+
+            if d1 >= d2:
+                high_sym, low_sym = s1, s2
+                d_high, d_low = d1, d2
+            else:
+                high_sym, low_sym = s2, s1
+                d_high, d_low = d2, d1
+
+            spread_drift = d_high - d_low
+            rel_price_spread_pct = spread_drift * 4.0
+            streak_low = int(active_slots[low_sym].get("cross_buy_streak", 0))
+            is_opposite_tilt = (d_high >= cross_min_tilt) and (d_low <= -cross_min_tilt)
+            is_spread_ready = spread_drift >= cross_band_pct
+            is_bleed_safe = streak_low < max_streak
+            pair_key = tuple(sorted([s1, s2]))
+
+            if pair_key in executed_cross_pair_keys:
+                p_status = "EXECUTED_CROSS_SWAP"
+            elif is_opposite_tilt and is_spread_ready and is_bleed_safe:
+                p_status = "READY_CROSS_SWAP"
+            elif is_opposite_tilt and is_spread_ready and not is_bleed_safe:
+                p_status = "BLEED_CAP_HOLD"
+            elif is_opposite_tilt:
+                p_status = "WATCHING_SPREAD"
+            else:
+                p_status = "NEUTRAL"
+
+            all_cross_pairs_info.append(
+                {
+                    "pair": f"{high_sym} -> {low_sym}",
+                    "high_sym": high_sym,
+                    "low_sym": low_sym,
+                    "drift_high_pct": round(d_high, 2),
+                    "drift_low_pct": round(d_low, 2),
+                    "spread_drift_pct": round(spread_drift, 2),
+                    "rel_price_spread_pct": round(rel_price_spread_pct, 2),
+                    "streak_low": streak_low,
+                    "max_streak": max_streak,
+                    "is_opposite_tilt": is_opposite_tilt,
+                    "status": p_status,
+                }
+            )
+
+    all_cross_pairs_info.sort(key=lambda x: (1 if x["status"] == "EXECUTED_CROSS_SWAP" else 0, x["spread_drift_pct"]), reverse=True)
+
     # -------------------------------------------------------------------------
-    # STEP 3: PORTFOLIO AGGREGATION & STATIC 50/50 HODL BENCHMARK COMPARISON
+    # STEP 5: PORTFOLIO AGGREGATION & STATIC 50/50 HODL BENCHMARK COMPARISON
     # -------------------------------------------------------------------------
     initial_basket_cash = sum(float(s.get("initial_cash", 0.08)) for s in active_slots.values()) or round(DEPLOYABLE_CAPITAL_SOL * 0.50, 6)
     total_basket_cash = sum(float(s["slot_cash"]) for s in active_slots.values())
@@ -756,7 +867,6 @@ def evaluate_demo_tick(
     total_liquid_sol = gas_reserve + unallocated_cash + total_basket_cash
     total_equity = gas_reserve + unallocated_cash + total_slots_equity
 
-    # Exact Static 50/50 Buy-and-Hold Benchmark (same initial tokens & initial cash, 0 rebalances)
     hodl_slots_equity = sum(
         float(s.get("initial_cash", s["slot_cash"]))
         + float(s.get("initial_tokens", s["tokens_held"])) * float(s["current_ratio"])

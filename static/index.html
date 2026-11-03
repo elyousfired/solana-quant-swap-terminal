@@ -176,8 +176,8 @@
     <section id="page-pairs" class="tab-page hidden space-y-8">
 
       <!-- ========================================== -->
-      <!-- PURE CLAUDE SHANNON 6-BASKET 50/50 HARVESTER (1.0 SOL) -->
-      <!-- THRESHOLD DRIFT BAND REBALANCING (±2.5% WEIGHT DRIFT) -->
+      <!-- PURE CLAUDE SHANNON 6-BASKET 50/50 + 15 CROSS-PAIR ENGINE (1.0 SOL) -->
+      <!-- PRIORITY #1: CROSS-SWAP (A -> B) | PRIORITY #2: RESIDUAL & DIRECT SOL (±1.0% DRIFT) -->
       <!-- ========================================== -->
       <div id="card-demo-engine" class="bg-gradient-to-r from-solana-card via-solana-dark to-solana-card border border-solana-green/40 rounded-2xl p-6 shadow-2xl relative overflow-hidden">
         
@@ -187,14 +187,14 @@
             <div class="flex items-center gap-3 flex-wrap">
               <span class="w-3 h-3 rounded-full bg-solana-green animate-ping" id="demo-pulse"></span>
               <h2 class="text-xl font-bold text-white tracking-wide flex items-center gap-2">
-                🤖 Claude Shannon 6-Basket 50/50 Harvester (1.0 SOL)
+                🤖 Claude Shannon 6-Basket 50/50 + 15 Cross-Pair Harvester (1.0 SOL)
               </h2>
               <span id="demo-status-badge" class="px-3 py-1 rounded-full text-xs font-mono font-bold bg-solana-green/20 text-solana-green border border-solana-green/40">
-                ACTIVE (6 BASKETS 50/50 LIVE)
+                ACTIVE (6 BASKETS + 15 CROSS PAIRS LIVE)
               </span>
             </div>
             <p class="text-xs text-gray-400 mt-1 font-mono">
-              Equal 6-Basket Deployment: <span class="text-white font-bold">0.1600 SOL &times; 6</span> (<span class="text-solana-green font-bold">0.0800 SOL Cash</span> + <span class="text-solana-purple font-bold">0.0800 SOL Token</span>) + <span class="text-amber-300 font-bold">0.0400 SOL Gas</span>. Threshold Drift Band: <span class="text-solana-green font-bold">&plusmn;1.0% Scale Drift (&asymp;&plusmn;4% Price)</span>.
+              Priority Waterfall: <span class="text-cyan-400 font-bold">#1 Direct Cross-Swap (A &#10140; B, Spread &ge; 1.10%)</span> &#10140; <span class="text-solana-green font-bold">#2 Residual &amp; Direct SOL Rebalance (&plusmn;1.0% Drift &asymp; &plusmn;4% Price)</span>.
             </p>
           </div>
 
@@ -217,9 +217,9 @@
             <span class="px-2 py-0.5 rounded bg-solana-green/20 text-solana-green font-bold border border-solana-green/30 text-[11px]">
               ⚖️ 6 SOL BASKETS + 🔄 15 CROSS PAIRS
             </span>
-            <span class="text-gray-300">SOL Band: <strong class="text-amber-300">&plusmn;1.0% Drift (&asymp;&plusmn;4% Price)</strong></span>
+            <span class="text-gray-300">Priority #1: <strong class="text-cyan-400">Cross-Swap (Spread &ge; 1.10% | Max 2 Streak)</strong></span>
             <span class="text-gray-500">|</span>
-            <span class="text-gray-300">Cross-Swap: <strong class="text-cyan-400">Spread &ge; 1.10% (Tilt &plusmn;0.45% | Max 2 Streak)</strong></span>
+            <span class="text-gray-300">Priority #2: <strong class="text-amber-300">Residual &amp; Direct SOL (&plusmn;1.0% Drift)</strong></span>
           </div>
           <div class="flex flex-wrap items-center gap-2 text-[11px] text-gray-400">
             <span>1-Hop Fee: <strong class="text-gray-200">0.15% (50% Saved)</strong></span>
@@ -625,6 +625,6 @@
   </footer>
 
   <!-- SCRIPT -->
-  <script src="app.js?v=8.0"></script>
+  <script src="app.js?v=9.0"></script>
 </body>
 </html>
