@@ -768,23 +768,32 @@ function renderDemoUI(state) {
   if (balEl) balEl.innerText = bal.toFixed(4);
   if (balUsdEl) balUsdEl.innerText = `≈ $${(bal * solUsd).toFixed(2)} USD (SOL @ $${solUsd.toFixed(2)})`;
 
+  const alphaUsd = totalAlpha * solUsd;
+  const profitUsd = profit * solUsd;
+  const surplusUsd = surplus * solUsd;
+
   if (profitEl) {
-    profitEl.innerText = `+${totalAlpha.toFixed(5)}`;
+    profitEl.innerHTML = `+${totalAlpha.toFixed(5)} <span class="text-[11px] text-gray-400 font-normal">($${alphaUsd.toFixed(3)})</span>`;
     profitEl.className = 'text-xl font-bold font-mono text-solana-green mt-1 flex items-baseline gap-1.5';
   }
   if (profitPctEl) {
-    const sign = profit >= 0 ? '+' : '';
-    profitPctEl.innerText = `Portfolio PnL: ${sign}${profit.toFixed(4)} SOL (${sign}${profitPct.toFixed(2)}%)`;
+    const sign = profit >= 0 ? '+' : '-';
+    const absProfit = Math.abs(profit);
+    const absProfitUsd = Math.abs(profitUsd);
+    const absProfitPct = Math.abs(profitPct);
+    profitPctEl.innerHTML = `Portfolio PnL: ${sign}${absProfit.toFixed(4)} SOL <span class="text-[10px] text-cyan-300 font-bold">(${sign}$${absProfitUsd.toFixed(2)} USD)</span> <span class="text-[10px] opacity-85">[${sign}${absProfitPct.toFixed(2)}%]</span>`;
     profitPctEl.className = profit >= 0
       ? 'text-[11px] text-solana-green/90 font-mono font-bold block mt-0.5'
-      : 'text-[11px] text-gray-300 font-mono block mt-0.5';
+      : 'text-[11px] text-amber-300 font-mono font-bold block mt-0.5';
   }
 
   if (slotsEl) slotsEl.innerText = `${activeCount} / 6`;
   if (cyclesEl) cyclesEl.innerText = cycles;
   if (surplusEl) {
-    const sSign = surplus >= 0 ? '+' : '';
-    surplusEl.innerText = `vs Static 50/50: ${sSign}${surplus.toFixed(5)} SOL`;
+    const sSign = surplus >= 0 ? '+' : '-';
+    const absSurplus = Math.abs(surplus);
+    const absSurplusUsd = Math.abs(surplusUsd);
+    surplusEl.innerHTML = `vs Static 50/50: ${sSign}${absSurplus.toFixed(5)} SOL <span class="text-[10px] text-gray-400">(${sSign}$${absSurplusUsd.toFixed(3)})</span>`;
     surplusEl.className = surplus >= 0
       ? 'text-[11px] text-solana-green font-mono block mt-0.5'
       : 'text-[11px] text-amber-300 font-mono block mt-0.5';
@@ -792,7 +801,7 @@ function renderDemoUI(state) {
 
   if (liquidSolEl) liquidSolEl.innerText = totalLiquidSol.toFixed(4);
   if (cashPctEl) {
-    cashPctEl.innerText = `${liquidPct.toFixed(1)}% SOL Cash / ${tokenPct.toFixed(1)}% Tokens`;
+    cashPctEl.innerText = `${liquidPct.toFixed(1)}% SOL Cash / ${tokenPct.toFixed(1)}% Tokens ($${(totalLiquidSol * solUsd).toFixed(2)})`;
   }
 
   // 3. Multi-Basket Capital Allocation Bar (Gas + 6 Baskets)
