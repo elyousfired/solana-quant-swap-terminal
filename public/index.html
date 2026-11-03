@@ -332,6 +332,27 @@
           </div>
         </div>
 
+        <!-- COIN QUANTITY ACCUMULATION MINI-CHARTS (TOTAL SOL + 6 TOKENS) -->
+        <div id="coin-qty-charts-section" class="mt-5 pt-4 border-t border-solana-border/50">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-3 gap-2">
+            <div>
+              <h4 class="text-xs font-bold uppercase tracking-wider text-white flex items-center gap-2">
+                <i data-lucide="trending-up" class="w-4 h-4 text-solana-green"></i>
+                <span>Live Coin Quantity Tracker (عدد الحبات فـ كل سلة + مجموع الـ SOL):</span>
+              </h4>
+              <p class="text-[11px] text-gray-400 font-mono mt-0.5">
+                Tracks exact coin count changes from initial 50/50 entry across every rebalance swap (dashed line = initial entry quantity).
+              </p>
+            </div>
+            <span class="text-[11px] font-mono text-solana-green bg-solana-green/10 border border-solana-green/30 px-2.5 py-1 rounded-lg">
+              1 Total SOL Chart + 6 Token Mini-Charts
+            </span>
+          </div>
+          <div id="coin-qty-charts-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+            <!-- Populated by JS: Featured Total SOL Card + 6 Individual Token Mini-Chart Cards -->
+          </div>
+        </div>
+
         <!-- TRADE HISTORY LEDGER -->
         <div class="mt-5 pt-4 border-t border-solana-border/50">
           <div class="flex items-center justify-between mb-2">
@@ -563,6 +584,6 @@
   </footer>
 
   <!-- SCRIPT -->
-  <script src="app.js?v=5.0"></script>
+  <script src="app.js?v=6.0"></script>
 </body>
 </html>

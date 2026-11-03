@@ -84,7 +84,11 @@ def get_initial_state() -> Dict[str, Any]:
         "initial_gas_after_init_sol": INITIAL_GAS_RESERVE_SOL,
         "unallocated_cash_sol": DEPLOYABLE_CAPITAL_SOL,
         "central_cash_sol": INITIAL_GAS_RESERVE_SOL + DEPLOYABLE_CAPITAL_SOL,
+        "initial_basket_cash_sol": round(DEPLOYABLE_CAPITAL_SOL * 0.50, 6),
         "total_basket_cash_sol": 0.0,
+        "basket_sol_delta": 0.0,
+        "basket_sol_delta_pct": 0.0,
+        "sol_qty_history": [round(DEPLOYABLE_CAPITAL_SOL * 0.50, 5)],
         "total_liquid_sol": INITIAL_CAPITAL_SOL,
         "total_token_val_sol": 0.0,
         "current_balance_sol": INITIAL_CAPITAL_SOL,
@@ -258,6 +262,9 @@ def evaluate_demo_tick(
             "initial_tokens": tokens_bought,
             "slot_cash": cash_half,
             "tokens_held": tokens_bought,
+            "token_qty_delta": 0.0,
+            "token_qty_delta_pct": 0.0,
+            "qty_history": [round(tokens_bought, 4), round(tokens_bought, 4)],
             "token_sol_val": round(net_token_sol, 6),
             "slot_equity": round(slot_eq, 6),
             "entry_ratio": curr_ratio,
@@ -293,9 +300,10 @@ def evaluate_demo_tick(
         )
 
     # -------------------------------------------------------------------------
-    # STEP 2: MARK-TO-MARKET & THRESHOLD DRIFT BAND REBALANCING (|Drift| >= 2.5%)
+    # STEP 2: MARK-TO-MARKET & THRESHOLD DRIFT BAND REBALANCING (|Drift| >= 1.0%)
     # -------------------------------------------------------------------------
     scanned_status: List[Dict[str, Any]] = []
+    any_rebalanced_this_tick = False
 
     for sym in BASKET_TOKENS:
         p_data = pairs_by_base.get(sym)
@@ -389,6 +397,7 @@ def evaluate_demo_tick(
                     total_fees_paid += actual_total_fee
                     cycles += 1
                     rebalanced_this_tick = True
+                    any_rebalanced_this_tick = True
 
                     trade_history.insert(
                         0,
@@ -430,6 +439,7 @@ def evaluate_demo_tick(
                         total_fees_paid += actual_total_fee
                         cycles += 1
                         rebalanced_this_tick = True
+                        any_rebalanced_this_tick = True
 
                         trade_history.insert(
                             0,
@@ -458,6 +468,20 @@ def evaluate_demo_tick(
             abs_drift = abs(drift)
             ref_ratio = float(slot.get("last_rebal_ratio") or curr_ratio)
             price_chg_ref_pct = ((curr_ratio - ref_ratio) / ref_ratio) * 100.0 if ref_ratio > 0 else 0.0
+
+        # Track token quantity delta & history for mini-chart
+        init_tok = float(slot.get("initial_tokens", tokens_held))
+        tok_delta = tokens_held - init_tok
+        tok_delta_pct = ((tok_delta / init_tok) * 100.0) if init_tok > 0 else 0.0
+        slot["token_qty_delta"] = round(tok_delta, 4)
+        slot["token_qty_delta_pct"] = round(tok_delta_pct, 2)
+
+        q_hist = list(slot.get("qty_history") or [])
+        if not q_hist:
+            q_hist = [round(init_tok, 4), round(tokens_held, 4)]
+        elif rebalanced_this_tick or len(q_hist) < 12 or abs(q_hist[-1] - round(tokens_held, 4)) > 1e-5:
+            q_hist.append(round(tokens_held, 4))
+        slot["qty_history"] = q_hist[-30:]
 
         # Persist updated display metrics on slot (keeping full precision on slot_cash & tokens_held)
         slot_cap = float(slot.get("slot_capital", BASKET_ALLOCATION_SOL))
@@ -511,7 +535,18 @@ def evaluate_demo_tick(
     # -------------------------------------------------------------------------
     # STEP 3: PORTFOLIO AGGREGATION & STATIC 50/50 HODL BENCHMARK COMPARISON
     # -------------------------------------------------------------------------
+    initial_basket_cash = sum(float(s.get("initial_cash", 0.08)) for s in active_slots.values()) or round(DEPLOYABLE_CAPITAL_SOL * 0.50, 6)
     total_basket_cash = sum(float(s["slot_cash"]) for s in active_slots.values())
+    basket_sol_delta = total_basket_cash - initial_basket_cash
+    basket_sol_delta_pct = ((basket_sol_delta / initial_basket_cash) * 100.0) if initial_basket_cash > 0 else 0.0
+
+    sol_hist = list(state.get("sol_qty_history") or [])
+    if not sol_hist:
+        sol_hist = [round(initial_basket_cash, 5), round(total_basket_cash, 5)]
+    elif any_rebalanced_this_tick or len(sol_hist) < 12 or abs(sol_hist[-1] - round(total_basket_cash, 5)) > 1e-6:
+        sol_hist.append(round(total_basket_cash, 5))
+    sol_hist = sol_hist[-30:]
+
     total_token_val = sum(float(s["tokens_held"]) * float(s["current_ratio"]) for s in active_slots.values())
     total_slots_equity = total_basket_cash + total_token_val
 
@@ -535,7 +570,11 @@ def evaluate_demo_tick(
     state["initial_gas_after_init_sol"] = round(initial_gas_after_init, 6)
     state["unallocated_cash_sol"] = round(unallocated_cash, 6)
     state["central_cash_sol"] = round(total_liquid_sol, 6)
+    state["initial_basket_cash_sol"] = round(initial_basket_cash, 6)
     state["total_basket_cash_sol"] = round(total_basket_cash, 6)
+    state["basket_sol_delta"] = round(basket_sol_delta, 6)
+    state["basket_sol_delta_pct"] = round(basket_sol_delta_pct, 2)
+    state["sol_qty_history"] = sol_hist
     state["total_liquid_sol"] = round(total_liquid_sol, 6)
     state["total_token_val_sol"] = round(total_token_val, 6)
     state["current_balance_sol"] = round(total_equity, 6)

@@ -9,7 +9,13 @@
   "initial_gas_after_init_sol": 0.04,
   "unallocated_cash_sol": 0.96,
   "central_cash_sol": 1.0,
+  "initial_basket_cash_sol": 0.48,
   "total_basket_cash_sol": 0.0,
+  "basket_sol_delta": 0.0,
+  "basket_sol_delta_pct": 0.0,
+  "sol_qty_history": [
+    0.48
+  ],
   "total_liquid_sol": 1.0,
   "total_token_val_sol": 0.0,
   "current_balance_sol": 1.0,
@@ -24,6 +30,6 @@
   "total_cycles_completed": 0,
   "scanned_pairs_status": [],
   "trade_history": [],
-  "last_tick_time": 1793720020.587671,
-  "created_at": 1793720020.587671
+  "last_tick_time": 1793721251.17689,
+  "created_at": 1793721251.17689
 }

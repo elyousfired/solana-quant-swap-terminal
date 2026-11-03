@@ -907,6 +907,151 @@ function renderDemoUI(state) {
     radarTbody.innerHTML = rHtml;
   }
 
+  // 5.5 Coin Quantity Accumulation Mini-Charts (Total Basket SOL + 6 Tokens)
+  const qtyChartsGrid = document.getElementById('coin-qty-charts-grid');
+  if (qtyChartsGrid) {
+    qtyChartsGrid.className = 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3';
+
+    const initBasketSol = state.initial_basket_cash_sol !== undefined ? state.initial_basket_cash_sol : 0.48;
+    const currBasketSol = state.total_basket_cash_sol !== undefined ? state.total_basket_cash_sol : 0.48;
+    const solDelta = state.basket_sol_delta !== undefined ? state.basket_sol_delta : (currBasketSol - initBasketSol);
+    const solDeltaPct = state.basket_sol_delta_pct !== undefined
+      ? state.basket_sol_delta_pct
+      : (initBasketSol > 0 ? (solDelta / initBasketSol) * 100.0 : 0.0);
+    const solHist = (state.sol_qty_history && state.sol_qty_history.length >= 2)
+      ? state.sol_qty_history
+      : [initBasketSol, currBasketSol];
+
+    const solSpark = generateCoinQtySparkline(solHist, initBasketSol, 'TOTAL_SOL', 480, 60);
+    const solIsUp = solDelta > 1e-6;
+    const solIsDown = solDelta < -1e-6;
+    const solBadgeClass = solIsUp
+      ? 'bg-solana-green/20 text-solana-green border-solana-green/40'
+      : solIsDown
+        ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+        : 'bg-gray-800 text-gray-300 border-gray-700';
+    const solSign = solDelta >= 0 ? '+' : '';
+
+    let qtyHtml = `
+      <!-- Featured Full-Width Card: Total SOL Across All 6 Baskets -->
+      <div class="col-span-1 md:col-span-2 lg:col-span-3 bg-gradient-to-r from-solana-dark via-solana-card to-solana-dark border border-solana-green/40 rounded-xl p-4 font-mono">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-2 pb-3 border-b border-solana-border/50">
+          <div class="flex items-center gap-2.5">
+            <span class="w-2.5 h-2.5 rounded-full bg-solana-green animate-pulse"></span>
+            <div>
+              <span class="text-sm font-bold text-white">☀️ TOTAL SOL IN ALL 6 BASKETS (مجموع الـ SOL فـ السلات الستة)</span>
+              <span class="block text-[10px] text-gray-400">Sum of SOL Cash Kaffas across JUP, RAY, JTO, KMNO, MET &amp; PUMP (+ ${gasReserve.toFixed(4)} SOL Gas = ${totalLiquidSol.toFixed(4)} SOL Total Wallet)</span>
+            </div>
+          </div>
+          <div class="flex items-center gap-3">
+            <span class="px-2.5 py-1 rounded-lg text-xs font-bold border ${solBadgeClass}">
+              ${solSign}${solDelta.toFixed(5)} SOL (${solSign}${solDeltaPct.toFixed(2)}%)
+            </span>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-center mt-3">
+          <div class="grid grid-cols-3 md:grid-cols-1 gap-2 text-xs bg-solana-dark/70 p-3 rounded-lg border border-solana-border/40">
+            <div>
+              <span class="text-gray-400 text-[10px] block">Initial Baskets SOL:</span>
+              <span class="text-gray-200 font-bold">${initBasketSol.toFixed(4)} SOL</span>
+            </div>
+            <div>
+              <span class="text-gray-400 text-[10px] block">Current Baskets SOL:</span>
+              <span class="text-solana-green font-bold text-sm">${currBasketSol.toFixed(5)} SOL</span>
+            </div>
+            <div>
+              <span class="text-gray-400 text-[10px] block">Net SOL Added / Used:</span>
+              <span class="${solIsUp ? 'text-solana-green' : solIsDown ? 'text-amber-300' : 'text-gray-300'} font-bold">${solSign}${solDelta.toFixed(5)} SOL</span>
+            </div>
+          </div>
+          <div class="md:col-span-3 h-16 bg-solana-dark/50 rounded-lg p-2 border border-solana-border/30 flex flex-col justify-between">
+            <div class="flex justify-between text-[10px] text-gray-400 px-1">
+              <span>Entry Baseline: ${initBasketSol.toFixed(4)} SOL (dashed)</span>
+              <span class="text-solana-green font-bold">Live: ${currBasketSol.toFixed(5)} SOL</span>
+            </div>
+            <div class="w-full h-10">
+              ${solSpark}
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // 6 Individual Token Coin Quantity Mini-Chart Cards
+    BASKET_ORDER.forEach(sym => {
+      const slot = activeSlots[sym];
+      if (!slot) return;
+
+      const initTok = slot.initial_tokens !== undefined ? slot.initial_tokens : (slot.tokens_held || 0.0);
+      const currTok = slot.tokens_held !== undefined ? slot.tokens_held : 0.0;
+      const dTok = slot.token_qty_delta !== undefined ? slot.token_qty_delta : (currTok - initTok);
+      const dTokPct = slot.token_qty_delta_pct !== undefined
+        ? slot.token_qty_delta_pct
+        : (initTok > 0 ? (dTok / initTok) * 100.0 : 0.0);
+      const qHist = (slot.qty_history && slot.qty_history.length >= 2)
+        ? slot.qty_history
+        : [initTok, currTok];
+
+      const isUp = dTok > 1e-5;
+      const isDown = dTok < -1e-5;
+      const badgeClass = isUp
+        ? 'bg-solana-green/20 text-solana-green border-solana-green/40'
+        : isDown
+          ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+          : 'bg-gray-800 text-gray-400 border-gray-700';
+      const sign = dTok >= 0 ? '+' : '';
+      const decimals = currTok >= 100 ? 2 : currTok >= 1 ? 3 : 4;
+
+      const sparkSvg = generateCoinQtySparkline(qHist, initTok, sym, 240, 48);
+
+      qtyHtml += `
+        <div class="bg-solana-dark/90 border border-solana-border hover:border-solana-purple/50 transition rounded-xl p-3.5 flex flex-col justify-between font-mono">
+          <div class="flex items-center justify-between border-b border-solana-border/40 pb-2">
+            <div class="flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full ${isUp ? 'bg-solana-green' : isDown ? 'bg-amber-400' : 'bg-solana-purple'}"></span>
+              <span class="font-bold text-white text-xs">${sym} Coins Held</span>
+            </div>
+            <span class="px-2 py-0.5 rounded text-[10px] font-bold border ${badgeClass}">
+              ${sign}${dTok.toLocaleString(undefined, { maximumFractionDigits: decimals })} ${sym} (${sign}${dTokPct.toFixed(2)}%)
+            </span>
+          </div>
+
+          <!-- Mini-Chart -->
+          <div class="my-2.5 bg-solana-card/50 rounded-lg p-2 border border-solana-border/30">
+            <div class="flex justify-between text-[9px] text-gray-400 mb-1">
+              <span>Init: ${initTok.toLocaleString(undefined, { maximumFractionDigits: decimals })}</span>
+              <span class="${isUp ? 'text-solana-green' : isDown ? 'text-amber-300' : 'text-gray-300'} font-bold">
+                ${isUp ? '▲ Bought Dip' : isDown ? '▼ Trimmed to SOL' : '● Steady 50/50'}
+              </span>
+            </div>
+            <div class="w-full h-11">
+              ${sparkSvg}
+            </div>
+          </div>
+
+          <!-- Coin Numbers Row -->
+          <div class="grid grid-cols-3 gap-1.5 text-[10px] bg-solana-card/30 p-2 rounded-lg border border-solana-border/20">
+            <div>
+              <span class="text-gray-500 block text-[9px]">Initial Qty</span>
+              <span class="text-gray-300 font-bold">${initTok.toLocaleString(undefined, { maximumFractionDigits: decimals })}</span>
+            </div>
+            <div>
+              <span class="text-gray-500 block text-[9px]">Current Qty</span>
+              <span class="text-white font-bold">${currTok.toLocaleString(undefined, { maximumFractionDigits: decimals })}</span>
+            </div>
+            <div class="text-right">
+              <span class="text-gray-500 block text-[9px]">Net Δ Coins</span>
+              <span class="${isUp ? 'text-solana-green' : isDown ? 'text-amber-300' : 'text-gray-400'} font-bold">${sign}${dTok.toLocaleString(undefined, { maximumFractionDigits: decimals })}</span>
+            </div>
+          </div>
+        </div>
+      `;
+    });
+
+    qtyChartsGrid.innerHTML = qtyHtml;
+  }
+
   // 6. Execution Ledger
   const tbody = document.getElementById('demo-trades-tbody');
   const countEl = document.getElementById('demo-trades-count');
@@ -965,6 +1110,61 @@ function renderDemoUI(state) {
   }
 
   if (window.lucide) lucide.createIcons();
+}
+
+function generateCoinQtySparkline(data, baselineQty, sym, width = 240, height = 48) {
+  const pts = (data && data.length >= 2) ? data : [baselineQty || 1, baselineQty || 1];
+  const base = baselineQty !== undefined ? baselineQty : pts[0];
+
+  const allVals = [...pts, base];
+  let minVal = Math.min(...allVals);
+  let maxVal = Math.max(...allVals);
+
+  if (Math.abs(maxVal - minVal) < 1e-7) {
+    const pad = Math.max(Math.abs(base) * 0.02, 0.0005);
+    minVal = base - pad;
+    maxVal = base + pad;
+  } else {
+    const pad = (maxVal - minVal) * 0.15;
+    minVal -= pad;
+    maxVal += pad;
+  }
+
+  const range = (maxVal - minVal) || 1;
+  const padY = 4;
+  const usableH = height - (padY * 2);
+
+  const coords = pts.map((v, i) => {
+    const x = (i / (pts.length - 1)) * width;
+    const y = height - padY - ((v - minVal) / range) * usableH;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+
+  const baseY = (height - padY - ((base - minVal) / range) * usableH).toFixed(1);
+  const pathD = `M ${coords.join(' L ')}`;
+  const areaD = `M ${coords[0]} L ${coords.join(' L ')} L ${width},${height} L 0,${height} Z`;
+
+  const lastVal = pts[pts.length - 1];
+  const diff = lastVal - base;
+  const strokeColor = diff > 1e-6 ? '#14F195' : diff < -1e-6 ? '#F59E0B' : '#9945FF';
+  const gradId = `qty_grad_${sym.replace(/[^a-zA-Z0-9]/g, '_')}`;
+
+  const lastPt = coords[coords.length - 1].split(',');
+
+  return `
+    <svg viewBox="0 0 ${width} ${height}" class="w-full h-full overflow-visible" preserveAspectRatio="none">
+      <defs>
+        <linearGradient id="${gradId}" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="${strokeColor}" stop-opacity="0.32"/>
+          <stop offset="100%" stop-color="${strokeColor}" stop-opacity="0.02"/>
+        </linearGradient>
+      </defs>
+      <line x1="0" y1="${baseY}" x2="${width}" y2="${baseY}" stroke="#6B7280" stroke-dasharray="3,3" stroke-width="1"/>
+      <path d="${areaD}" fill="url(#${gradId})"/>
+      <path d="${pathD}" fill="none" stroke="${strokeColor}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="${lastPt[0]}" cy="${lastPt[1]}" r="3" fill="${strokeColor}"/>
+    </svg>
+  `;
 }
 
 async function toggleDemoBot() {
