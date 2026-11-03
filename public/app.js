@@ -1270,15 +1270,20 @@ function renderDemoUI(state) {
 }
 
 function generateCoinQtySparkline(data, baselineQty, sym, width = 240, height = 48) {
-  const pts = (data && data.length >= 2) ? data : [baselineQty || 1, baselineQty || 1];
-  const base = baselineQty !== undefined ? baselineQty : pts[0];
+  const base = baselineQty !== undefined ? baselineQty : ((data && data.length > 0) ? data[0] : 1);
+  const rawPts = (data && data.length >= 2) ? data : [base, base];
+
+  // Snap any micro-rounding noise (< 0.02% of baseline) directly to baseline so Steady 50/50 is a flat line
+  const snapTol = Math.max(Math.abs(base) * 0.0002, 1e-6);
+  const pts = rawPts.map(v => (Math.abs(v - base) <= snapTol ? base : v));
 
   const allVals = [...pts, base];
   let minVal = Math.min(...allVals);
   let maxVal = Math.max(...allVals);
 
-  if (Math.abs(maxVal - minVal) < 1e-7) {
-    const pad = Math.max(Math.abs(base) * 0.02, 0.0005);
+  const minSpan = Math.max(Math.abs(base) * 0.01, 0.0005);
+  if (Math.abs(maxVal - minVal) < minSpan) {
+    const pad = minSpan / 2.0;
     minVal = base - pad;
     maxVal = base + pad;
   } else {
@@ -1303,7 +1308,7 @@ function generateCoinQtySparkline(data, baselineQty, sym, width = 240, height = 
 
   const lastVal = pts[pts.length - 1];
   const diff = lastVal - base;
-  const strokeColor = diff > 1e-6 ? '#14F195' : diff < -1e-6 ? '#F59E0B' : '#9945FF';
+  const strokeColor = diff > snapTol ? '#14F195' : diff < -snapTol ? '#F59E0B' : '#9945FF';
   const gradId = `qty_grad_${sym.replace(/[^a-zA-Z0-9]/g, '_')}`;
 
   const lastPt = coords[coords.length - 1].split(',');
