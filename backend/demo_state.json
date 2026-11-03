@@ -4,6 +4,9 @@
   "initial_capital_sol": 1.0,
   "sol_price_usd": 95.5,
   "rebalance_band_pct": 1.0,
+  "cross_spread_band_pct": 1.1,
+  "cross_min_tilt_pct": 0.45,
+  "max_cross_buy_streak": 2,
   "basket_allocation_sol": 0.16,
   "gas_reserve_sol": 0.04,
   "initial_gas_after_init_sol": 0.04,
@@ -28,8 +31,10 @@
   "active_slots": {},
   "active_slots_count": 0,
   "total_cycles_completed": 0,
+  "total_cross_swaps": 0,
+  "cross_pairs_status": [],
   "scanned_pairs_status": [],
   "trade_history": [],
-  "last_tick_time": 1793721251.17689,
-  "created_at": 1793721251.17689
+  "last_tick_time": 1793722724.423095,
+  "created_at": 1793722724.423095
 }

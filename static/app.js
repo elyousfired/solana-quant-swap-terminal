@@ -661,6 +661,10 @@ function renderDemoUI(state) {
   if (gasEl) {
     gasEl.innerText = `${gasReserve.toFixed(4)} SOL`;
   }
+  const crossSwapsEl = document.getElementById('demo-cross-swaps-count');
+  if (crossSwapsEl) {
+    crossSwapsEl.innerText = state.total_cross_swaps || 0;
+  }
 
   // 2. KPI Cards
   const balEl = document.getElementById('demo-kpi-balance');
@@ -760,7 +764,7 @@ function renderDemoUI(state) {
   const gridEl = document.getElementById('active-positions-grid');
   const slotsInd = document.getElementById('active-slots-indicator');
   if (slotsInd) {
-    slotsInd.innerText = `${activeCount} / 6 Baskets Active (±${bandPct}% Threshold Drift Band)`;
+    slotsInd.innerText = `${activeCount} / 6 Baskets Active (±${bandPct}% SOL Band + 15 Cross-Pairs)`;
   }
 
   if (gridEl) {
@@ -786,11 +790,11 @@ function renderDemoUI(state) {
         const cashVal = slot.slot_cash !== undefined ? slot.slot_cash : 0.08;
         const tokenVal = slot.token_sol_val !== undefined ? slot.token_sol_val : 0.08;
         const tokensHeld = slot.tokens_held || 0.0;
-        const refPrice = slot.last_rebal_ratio || slot.entry_ratio || slot.current_ratio || 0.0;
         const livePrice = slot.current_ratio || 0.0;
         const priceChg = slot.price_change_from_ref_pct || 0.0;
         const alpha = slot.harvested_alpha_sol || 0.0;
         const slotCycles = slot.cycles_completed || 0;
+        const crossStreak = slot.cross_buy_streak || 0;
 
         let driftBadgeClass = 'bg-solana-green/15 text-solana-green border-solana-green/30';
         let driftLabel = `Drift: ${drift >= 0 ? '+' : ''}${drift.toFixed(2)}%`;
@@ -851,7 +855,7 @@ function renderDemoUI(state) {
             <!-- Footer -->
             <div class="pt-2 border-t border-solana-border/40 flex items-center justify-between text-[10px] text-gray-400 mt-2">
               <span>Equity: <strong class="text-white">${slotEquity.toFixed(4)} SOL</strong></span>
-              <span> Cycles: <strong class="text-amber-300">${slotCycles}</strong> | Alpha: <strong class="text-solana-green">+${alpha.toFixed(5)}</strong></span>
+              <span>Cycles: <strong class="text-amber-300">${slotCycles}</strong> | Streak: <strong class="text-cyan-300">${crossStreak}/2</strong> | Alpha: <strong class="text-solana-green">+${alpha.toFixed(5)}</strong></span>
             </div>
           </div>
         `;
@@ -873,7 +877,9 @@ function renderDemoUI(state) {
       const wTok = item.weight_token_pct !== undefined ? item.weight_token_pct : 50.0;
 
       let badgeHtml = '';
-      if (item.gate_status === 'REBALANCED_50_50') {
+      if (item.gate_status === 'CROSS_ROTATED') {
+        badgeHtml = '<span class="px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 text-[10px] font-bold">🔄 CROSS-ROTATED 50/50</span>';
+      } else if (item.gate_status === 'REBALANCED_50_50') {
         badgeHtml = '<span class="px-2 py-0.5 rounded bg-solana-green/20 text-solana-green border border-solana-green/40 text-[10px] font-bold">⚡ REBALANCED 50/50</span>';
       } else if (item.gate_status === 'NEAR_TRIGGER') {
         badgeHtml = `<span class="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-bold animate-pulse">⚠️ NEAR ±${bandPct.toFixed(1)}% BAND</span>`;
@@ -905,6 +911,66 @@ function renderDemoUI(state) {
       `;
     });
     radarTbody.innerHTML = rHtml;
+  }
+
+  // 5.25 15 Cross-Token Pairs Triangular Rotation Matrix Table
+  const crossTbody = document.getElementById('cross-pairs-radar-tbody');
+  const crossPairs = state.cross_pairs_status || [];
+  const crossBandPct = state.cross_spread_band_pct || 1.10;
+  if (crossTbody) {
+    if (crossPairs.length === 0) {
+      crossTbody.innerHTML = `
+        <tr>
+          <td colspan="7" class="py-3 text-center text-gray-500 font-mono text-xs">
+            Scanning 15 cross-token pairs (JUP, RAY, JTO, KMNO, MET, PUMP) for relative scale divergence...
+          </td>
+        </tr>
+      `;
+    } else {
+      let cHtml = '';
+      crossPairs.forEach(cp => {
+        const dHigh = cp.drift_high_pct || 0.0;
+        const dLow = cp.drift_low_pct || 0.0;
+        const spread = cp.spread_drift_pct || 0.0;
+        const relPrice = cp.rel_price_spread_pct || 0.0;
+        const streak = cp.streak_low || 0;
+        const maxStreak = cp.max_streak || 2;
+        const prog = Math.min(100.0, (spread / crossBandPct) * 100.0);
+
+        let statusBadge = '';
+        if (cp.status === 'EXECUTED_CROSS_SWAP') {
+          statusBadge = '<span class="px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/50 text-[10px] font-bold">🔄 CROSS-SWAP EXECUTED</span>';
+        } else if (cp.status === 'READY_CROSS_SWAP') {
+          statusBadge = '<span class="px-2 py-0.5 rounded bg-solana-green/20 text-solana-green border border-solana-green/50 text-[10px] font-bold animate-pulse">⚡ READY CROSS-SWAP</span>';
+        } else if (cp.status === 'BLEED_CAP_HOLD') {
+          statusBadge = `<span class="px-2 py-0.5 rounded bg-red-500/20 text-red-300 border border-red-500/40 text-[10px]">🛡️ BLEED CAP (${streak}/${maxStreak})</span>`;
+        } else if (cp.status === 'WATCHING_SPREAD') {
+          statusBadge = '<span class="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px]">👀 OPPOSITE TILT</span>';
+        } else {
+          statusBadge = '<span class="px-2 py-0.5 rounded bg-gray-800 text-gray-400 border border-gray-700 text-[10px]">⚖️ CO-MOVING</span>';
+        }
+
+        cHtml += `
+          <tr class="hover:bg-solana-dark/50 transition">
+            <td class="py-2 px-3 font-bold text-cyan-300">${cp.high_sym} &#10140; ${cp.low_sym}</td>
+            <td class="py-2 px-3 font-bold ${dHigh >= 0.45 ? 'text-solana-green' : 'text-gray-300'}">${dHigh >= 0 ? '+' : ''}${dHigh.toFixed(2)}% (${cp.high_sym})</td>
+            <td class="py-2 px-3 font-bold ${dLow <= -0.45 ? 'text-amber-300' : 'text-gray-300'}">${dLow >= 0 ? '+' : ''}${dLow.toFixed(2)}% (${cp.low_sym})</td>
+            <td class="py-2 px-3">
+              <div class="flex items-center gap-2">
+                <span class="font-bold ${spread >= crossBandPct ? 'text-cyan-300' : 'text-gray-200'}">+${spread.toFixed(2)}%</span>
+                <div class="w-16 bg-gray-800 rounded-full h-1.5 overflow-hidden">
+                  <div class="${prog >= 100 ? 'bg-cyan-400' : prog >= 70 ? 'bg-amber-400' : 'bg-solana-purple'} h-1.5" style="width: ${prog}%"></div>
+                </div>
+              </div>
+            </td>
+            <td class="py-2 px-3 text-white font-bold">+${relPrice.toFixed(2)}%</td>
+            <td class="py-2 px-3 ${streak >= maxStreak ? 'text-red-400 font-bold' : 'text-gray-300'}">${streak} / ${maxStreak}</td>
+            <td class="py-2 px-3 text-right">${statusBadge}</td>
+          </tr>
+        `;
+      });
+      crossTbody.innerHTML = cHtml;
+    }
   }
 
   // 5.5 Coin Quantity Accumulation Mini-Charts (Total Basket SOL + 6 Tokens)
@@ -1022,7 +1088,7 @@ function renderDemoUI(state) {
             <div class="flex justify-between text-[9px] text-gray-400 mb-1">
               <span>Init: ${initTok.toLocaleString(undefined, { maximumFractionDigits: decimals })}</span>
               <span class="${isUp ? 'text-solana-green' : isDown ? 'text-amber-300' : 'text-gray-300'} font-bold">
-                ${isUp ? '▲ Bought Dip' : isDown ? '▼ Trimmed to SOL' : '● Steady 50/50'}
+                ${isUp ? '▲ Accumulated' : isDown ? '▼ Trimmed High' : '● Steady 50/50'}
               </span>
             </div>
             <div class="w-full h-11">
@@ -1066,7 +1132,7 @@ function renderDemoUI(state) {
       tbody.innerHTML = `
         <tr>
           <td colspan="7" class="py-6 text-center text-gray-500 font-mono text-xs">
-            6-Basket 50/50 Threshold Harvester ready. Monitoring live price drifts...
+            6-Basket 50/50 + 15 Cross-Pair Harvester ready. Monitoring live price drifts...
           </td>
         </tr>
       `;
@@ -1077,7 +1143,9 @@ function renderDemoUI(state) {
         const isPositive = (t.net_profit_sol || 0) >= 0;
 
         let typeBadge = '';
-        if (t.type === 'SHANNON_SELL_EXCESS') {
+        if (t.type === 'SHANNON_CROSS_SWAP') {
+          typeBadge = '<span class="text-cyan-400 font-bold">🔄 CROSS SWAP</span>';
+        } else if (t.type === 'SHANNON_SELL_EXCESS') {
           typeBadge = '<span class="text-solana-green font-bold">⚡ REBALANCE SELL</span>';
         } else if (t.type === 'SHANNON_BUY_DIP') {
           typeBadge = '<span class="text-amber-400 font-bold">🛒 REBALANCE BUY</span>';
