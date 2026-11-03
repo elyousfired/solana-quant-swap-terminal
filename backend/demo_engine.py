@@ -236,12 +236,12 @@ def _execute_sol_sell_excess(
             "time": now,
             "type": "SHANNON_SELL_EXCESS",
             "symbol": sym,
-            "action": f"Sell Excess {sym}: -{tokens_to_sell:,.2f} {sym} -> +{net_sol_out:.4f} SOL",
-            "tranche_sol": round(gross_sol_out, 4),
-            "tokens_traded": round(tokens_to_sell, 4),
+            "action": f"Sell Excess {sym}: -{tokens_to_sell:,.4f} {sym} -> +{net_sol_out:.5f} SOL",
+            "tranche_sol": round(gross_sol_out, 6),
+            "tokens_traded": round(tokens_to_sell, 6),
             "ratio": curr_ratio,
             "net_profit_sol": round(net_step_alpha, 6),
-            "reason": f"{reason_prefix} +{abs_drift:.2f}% (Price +{abs(price_chg_ref_pct):.1f}%) >= {band_pct}% Band -> Restored 50/50",
+            "reason": f"{reason_prefix} +{abs_drift:.2f}% (Price +{abs(price_chg_ref_pct):.2f}%) >= {band_pct}% Band -> Restored 50/50",
         },
     )
     return True, gas_reserve, cycles, total_alpha, total_fees_paid, False
@@ -265,7 +265,7 @@ def evaluate_demo_tick(
         state = load_demo_state()
 
     if sol_usd and sol_usd > 0:
-        state["sol_price_usd"] = round(float(sol_usd), 2)
+        state["sol_price_usd"] = round(float(sol_usd), 4)
 
     if not state.get("is_running", False):
         return state
@@ -335,6 +335,7 @@ def evaluate_demo_tick(
         slot_eq = cash_half + net_token_sol
         w_cash = (cash_half / slot_eq) * 100.0
         w_tok = (net_token_sol / slot_eq) * 100.0
+        tok_usd = float(p_data.get("base_usd", 0.0)) or (curr_ratio * float(sol_usd or 95.5))
 
         active_slots[sym] = {
             "token_symbol": sym,
@@ -346,12 +347,13 @@ def evaluate_demo_tick(
             "tokens_held": tokens_bought,
             "token_qty_delta": 0.0,
             "token_qty_delta_pct": 0.0,
-            "qty_history": [round(tokens_bought, 4), round(tokens_bought, 4)],
+            "qty_history": [round(tokens_bought, 6), round(tokens_bought, 6)],
             "token_sol_val": round(net_token_sol, 6),
             "slot_equity": round(slot_eq, 6),
             "entry_ratio": curr_ratio,
             "last_rebal_ratio": curr_ratio,
             "current_ratio": curr_ratio,
+            "token_usd": tok_usd,
             "price_change_from_ref_pct": 0.0,
             "weight_cash_pct": round(w_cash, 2),
             "weight_token_pct": round(w_tok, 2),
@@ -374,9 +376,9 @@ def evaluate_demo_tick(
                 "time": now,
                 "type": "SHANNON_50_50_INIT",
                 "symbol": sym,
-                "action": f"Basket {sym} 50/50: {cash_half:.4f} SOL Cash + {tokens_bought:,.2f} {sym}",
-                "tranche_sol": round(token_half_gross, 4),
-                "tokens_traded": round(tokens_bought, 4),
+                "action": f"Basket {sym} 50/50: {cash_half:.4f} SOL Cash + {tokens_bought:,.4f} {sym}",
+                "tranche_sol": round(token_half_gross, 6),
+                "tokens_traded": round(tokens_bought, 6),
                 "ratio": curr_ratio,
                 "net_profit_sol": round(-entry_fee_total, 6),
                 "reason": f"Equal 1/6 Basket Setup ({basket_cap:.4f} SOL -> 50% SOL / 50% {sym})",
@@ -391,6 +393,10 @@ def evaluate_demo_tick(
         p_data = pairs_by_base.get(sym)
         if p_data and float(p_data.get("current_ratio", 0.0)) > 0:
             slot["current_ratio"] = float(p_data["current_ratio"])
+            if float(p_data.get("base_usd", 0.0)) > 0:
+                slot["token_usd"] = float(p_data["base_usd"])
+            else:
+                slot["token_usd"] = float(slot["current_ratio"]) * float(sol_usd or 95.5)
 
     rebalanced_sol_this_tick = set()
     fee_blocked_sol_this_tick = set()
@@ -547,8 +553,8 @@ def evaluate_demo_tick(
         slot_a["fees_paid_sol"] = float(slot_a.get("fees_paid_sol", 0.0)) + (actual_total_fee * 0.5)
         slot_b["fees_paid_sol"] = float(slot_b.get("fees_paid_sol", 0.0)) + (actual_total_fee * 0.5)
 
-        slot_a["last_action"] = f"CROSS {sym_a}->{sym_b} (-{tokens_a_sold:,.2f})"
-        slot_b["last_action"] = f"CROSS {sym_a}->{sym_b} (+{tokens_b_bought:,.2f})"
+        slot_a["last_action"] = f"CROSS {sym_a}->{sym_b} (-{tokens_a_sold:,.4f})"
+        slot_b["last_action"] = f"CROSS {sym_a}->{sym_b} (+{tokens_b_bought:,.4f})"
 
         total_alpha += net_cross_alpha
         total_fees_paid += actual_total_fee
@@ -566,10 +572,10 @@ def evaluate_demo_tick(
                 "time": now,
                 "type": "SHANNON_CROSS_SWAP",
                 "symbol": f"{sym_a}->{sym_b}",
-                "action": f"Cross-Swap {sym_a} -> {sym_b}: -{tokens_a_sold:,.2f} {sym_a} -> +{tokens_b_bought:,.2f} {sym_b}",
-                "tranche_sol": round(gross_sol_equiv, 4),
-                "tokens_traded": round(tokens_b_bought, 4),
-                "ratio": round(ratio_a / ratio_b, 6) if ratio_b > 0 else ratio_a,
+                "action": f"Cross-Swap {sym_a} -> {sym_b}: -{tokens_a_sold:,.4f} {sym_a} -> +{tokens_b_bought:,.4f} {sym_b}",
+                "tranche_sol": round(gross_sol_equiv, 6),
+                "tokens_traded": round(tokens_b_bought, 6),
+                "ratio": round(ratio_a / ratio_b, 10) if ratio_b > 0 else ratio_a,
                 "net_profit_sol": round(net_cross_alpha, 6),
                 "reason": (
                     f"Priority #1 Cross Spread +{spread_drift:.2f}% ({sym_a} {cand['drift_high_pct']:+.2f}% vs "
@@ -667,12 +673,12 @@ def evaluate_demo_tick(
                         "time": now,
                         "type": "SHANNON_BUY_DIP",
                         "symbol": sym,
-                        "action": f"Buy Discount {sym}: -{delta_sol:.4f} SOL -> +{tokens_bought:,.2f} {sym}",
-                        "tranche_sol": round(delta_sol, 4),
-                        "tokens_traded": round(tokens_bought, 4),
+                        "action": f"Buy Discount {sym}: -{delta_sol:.5f} SOL -> +{tokens_bought:,.4f} {sym}",
+                        "tranche_sol": round(delta_sol, 6),
+                        "tokens_traded": round(tokens_bought, 6),
                         "ratio": curr_ratio,
                         "net_profit_sol": round(net_step_alpha, 6),
-                        "reason": f"{reason_lbl} -{abs_drift:.2f}% (Price -{abs(price_chg_ref_pct):.1f}%) <= -{band_pct}% Band -> Restored 50/50",
+                        "reason": f"{reason_lbl} -{abs_drift:.2f}% (Price -{abs(price_chg_ref_pct):.2f}%) <= -{band_pct}% Band -> Restored 50/50",
                     },
                 )
             else:
@@ -696,6 +702,7 @@ def evaluate_demo_tick(
                     "entry_ratio": live_r,
                     "last_rebal_ratio": live_r,
                     "current_ratio": live_r,
+                    "token_usd": float(p_data.get("base_usd", 0.0)) if p_data else 0.0,
                     "price_change_ref_pct": 0.0,
                     "weight_cash_pct": 50.0,
                     "weight_token_pct": 50.0,
@@ -731,14 +738,14 @@ def evaluate_demo_tick(
         init_tok = float(slot.get("initial_tokens", tokens_held))
         tok_delta = tokens_held - init_tok
         tok_delta_pct = ((tok_delta / init_tok) * 100.0) if init_tok > 0 else 0.0
-        slot["token_qty_delta"] = round(tok_delta, 4)
+        slot["token_qty_delta"] = round(tok_delta, 6)
         slot["token_qty_delta_pct"] = round(tok_delta_pct, 2)
 
         q_hist = list(slot.get("qty_history") or [])
         if not q_hist:
-            q_hist = [round(init_tok, 4), round(tokens_held, 4)]
-        elif rebalanced_this_tick or len(q_hist) < 12 or abs(q_hist[-1] - round(tokens_held, 4)) > 1e-5:
-            q_hist.append(round(tokens_held, 4))
+            q_hist = [round(init_tok, 6), round(tokens_held, 6)]
+        elif rebalanced_this_tick or len(q_hist) < 12 or abs(q_hist[-1] - round(tokens_held, 6)) > 1e-6:
+            q_hist.append(round(tokens_held, 6))
         slot["qty_history"] = q_hist[-30:]
 
         slot_cap = float(slot.get("slot_capital", BASKET_ALLOCATION_SOL))
@@ -778,13 +785,14 @@ def evaluate_demo_tick(
                 "entry_ratio": float(slot.get("entry_ratio", curr_ratio)),
                 "last_rebal_ratio": ref_ratio,
                 "current_ratio": curr_ratio,
+                "token_usd": float(slot.get("token_usd", 0.0)),
                 "price_change_ref_pct": round(price_chg_ref_pct, 2),
                 "weight_cash_pct": round(w_cash, 2),
                 "weight_token_pct": round(w_token, 2),
                 "drift_pct": round(drift, 2),
                 "band_pct": band_pct,
                 "progress_to_trigger_pct": progress_pct,
-                "slot_equity": round(slot_equity, 5),
+                "slot_equity": round(slot_equity, 6),
                 "cycles_completed": int(slot.get("cycles_completed", 0)),
                 "cross_buy_streak": int(slot.get("cross_buy_streak", 0)),
                 "is_held": True,

@@ -242,7 +242,7 @@ def generate_ou_ratio_series(current_ratio: float, h24_chg_pct: float, volatilit
     noise = rng.normal(0, current_ratio * (volatility_pct / 100.0) * 0.4, points)
     noise = noise - (noise[0] + t * (noise[-1] - noise[0]))
     series = drift + noise
-    return [round(float(x), 8) for x in series]
+    return [round(float(x), 10) for x in series]
 
 def compute_ratio_series(token_a: str, token_b: str, live_p_a: float, live_p_b: float):
     """
@@ -255,13 +255,13 @@ def compute_ratio_series(token_a: str, token_b: str, live_p_a: float, live_p_b: 
             ratios = list(closes_a)
             ratios[-1] = live_p_a
             chg = ((ratios[-1] - ratios[0]) / ratios[0]) * 100.0 if ratios[0] > 0 else 0.0
-            return ratios, round(chg, 2), round(float(np.mean(ratios)), 2), round(min(ratios), 2), round(max(ratios), 2)
+            return ratios, round(chg, 2), round(float(np.mean(ratios)), 4), round(min(ratios), 4), round(max(ratios), 4)
         
         # Resilient Brownian bridge for SOL/USDC
         sol_price = live_p_a if live_p_a > 0 else 95.0
         chg_pct = -2.15
         series = generate_ou_ratio_series(sol_price, chg_pct, volatility_pct=2.0, points=30)
-        return series, chg_pct, round(float(np.mean(series)), 2), round(min(series), 2), round(max(series), 2)
+        return series, chg_pct, round(float(np.mean(series)), 4), round(min(series), 4), round(max(series), 4)
 
     closes_sol = get_4h_candles("SOL")
     closes_tok = get_4h_candles(token_b)
@@ -271,7 +271,7 @@ def compute_ratio_series(token_a: str, token_b: str, live_p_a: float, live_p_b: 
         live_ratio = (live_p_b / live_p_a) if live_p_a > 0 else ratios[-1]
         ratios[-1] = live_ratio
         chg = ((ratios[-1] - ratios[0]) / ratios[0]) * 100.0 if ratios[0] > 0 else 0.0
-        return ratios, round(chg, 2), round(float(np.mean(ratios)), 8), round(min(ratios), 8), round(max(ratios), 8)
+        return ratios, round(chg, 2), round(float(np.mean(ratios)), 10), round(min(ratios), 10), round(max(ratios), 10)
     
     # Resilient Brownian bridge fallback (for US IPs / Vercel cloud serverless)
     current_r = (live_p_b / live_p_a) if live_p_a > 0 else 0.00262
@@ -284,7 +284,7 @@ def compute_ratio_series(token_a: str, token_b: str, live_p_a: float, live_p_b: 
         
     series = generate_ou_ratio_series(current_r, drift_pct, volatility_pct=2.8, points=30)
     chg = round(((series[-1] - series[0]) / series[0]) * 100.0, 2)
-    return series, chg, round(float(np.mean(series)), 8), round(min(series), 8), round(max(series), 8)
+    return series, chg, round(float(np.mean(series)), 10), round(min(series), 10), round(max(series), 10)
 
 @app.get("/api/pairs-rotation")
 def get_pairs_rotation():

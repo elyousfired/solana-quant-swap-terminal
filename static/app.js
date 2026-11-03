@@ -40,6 +40,23 @@ function switchTab(tabId) {
   }
 }
 
+function formatUsdPrice(p) {
+  if (!p || isNaN(p)) return '0.0000';
+  if (p >= 100.0) return p.toFixed(3);
+  if (p >= 10.0) return p.toFixed(4);
+  if (p >= 1.0) return p.toFixed(5);
+  if (p >= 0.01) return p.toFixed(6);
+  if (p >= 0.0001) return p.toFixed(7);
+  return p.toFixed(8);
+}
+
+function formatTokenQty(q) {
+  if (q === undefined || q === null || isNaN(q)) return '0.0000';
+  const absQ = Math.abs(q);
+  const dec = absQ >= 1000 ? 2 : absQ >= 100 ? 3 : absQ >= 10 ? 4 : 5;
+  return q.toLocaleString(undefined, { minimumFractionDigits: dec, maximumFractionDigits: dec });
+}
+
 // 1. Live Tickers Bar
 async function loadTickers() {
   try {
@@ -58,7 +75,7 @@ async function loadTickers() {
         html += `
           <div class="flex items-center space-x-1 whitespace-nowrap">
             <span class="text-white font-bold">${sym}:</span>
-            <span class="text-solana-green">$${item.price.toFixed(item.price < 1 ? 4 : 2)}</span>
+            <span class="text-solana-green">$${formatUsdPrice(item.price)}</span>
           </div>
         `;
       }
@@ -107,11 +124,11 @@ async function loadLstDepeg() {
             <div class="mt-4 space-y-2 text-xs font-mono">
               <div class="flex justify-between">
                 <span class="text-gray-400">DEX Market Ratio:</span>
-                <span class="text-white font-bold">${lst.market_ratio_sol.toFixed(4)} SOL</span>
+                <span class="text-white font-bold">${lst.market_ratio_sol.toFixed(5)} SOL</span>
               </div>
               <div class="flex justify-between">
                 <span class="text-gray-400">True Staking NAV:</span>
-                <span class="text-solana-green font-bold">${lst.true_nav_ratio_sol.toFixed(4)} SOL</span>
+                <span class="text-solana-green font-bold">${lst.true_nav_ratio_sol.toFixed(5)} SOL</span>
               </div>
               <div class="flex justify-between border-t border-solana-border/50 pt-2">
                 <span class="text-gray-400">Spread Divergence:</span>
@@ -145,11 +162,13 @@ async function loadLstDepeg() {
 }
 
 function formatRatio(r) {
-  if (!r || isNaN(r)) return '0.0000';
-  if (r >= 10.0) return r.toFixed(2);
-  if (r >= 1.0) return r.toFixed(4);
-  if (r >= 0.001) return r.toFixed(6);
-  return r.toFixed(8);
+  if (!r || isNaN(r)) return '0.00000000';
+  if (r >= 10.0) return r.toFixed(4);
+  if (r >= 1.0) return r.toFixed(6);
+  if (r >= 0.01) return r.toFixed(7);
+  if (r >= 0.001) return r.toFixed(8);
+  if (r >= 0.0001) return r.toFixed(9);
+  return r.toFixed(10);
 }
 
 function generateRatioSparkline(data, pairName, width = 280, height = 48) {
@@ -886,25 +905,25 @@ function renderDemoUI(state) {
             <div class="grid grid-cols-2 gap-2 my-1 text-[11px] bg-solana-card/40 p-2.5 rounded-lg border border-solana-border/30">
               <div>
                 <span class="text-gray-400 block text-[10px]">SOL Cash Kaffa:</span>
-                <span class="text-solana-green font-bold">${cashVal.toFixed(4)} SOL</span>
+                <span class="text-solana-green font-bold">${cashVal.toFixed(5)} SOL</span>
               </div>
               <div>
                 <span class="text-gray-400 block text-[10px]">${sym} Value Kaffa:</span>
-                <span class="text-solana-purple font-bold">${tokenVal.toFixed(4)} SOL</span>
+                <span class="text-solana-purple font-bold">${tokenVal.toFixed(5)} SOL</span>
               </div>
               <div>
                 <span class="text-gray-400 block text-[10px]">Live Price (Δ Ref):</span>
-                <span class="text-white font-bold">${formatRatio(livePrice)} <span class="${priceChg >= 0 ? 'text-solana-green' : 'text-amber-300'} text-[10px]">(${priceChg >= 0 ? '+' : ''}${priceChg.toFixed(1)}%)</span></span>
+                <span class="text-white font-bold">${formatRatio(livePrice)} <span class="${priceChg >= 0 ? 'text-solana-green' : 'text-amber-300'} text-[10px]">(${priceChg >= 0 ? '+' : ''}${priceChg.toFixed(2)}%)</span></span>
               </div>
               <div>
                 <span class="text-gray-400 block text-[10px]">${sym} Qty Held:</span>
-                <span class="text-gray-200 font-bold">${tokensHeld.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                <span class="text-gray-200 font-bold">${formatTokenQty(tokensHeld)}</span>
               </div>
             </div>
 
             <!-- Footer -->
             <div class="pt-2 border-t border-solana-border/40 flex items-center justify-between text-[10px] text-gray-400 mt-2">
-              <span>Equity: <strong class="text-white">${slotEquity.toFixed(4)} SOL</strong></span>
+              <span>Equity: <strong class="text-white">${slotEquity.toFixed(5)} SOL</strong></span>
               <span>Cycles: <strong class="text-amber-300">${slotCycles}</strong> | Streak: <strong class="text-cyan-300">${crossStreak}/2</strong> | Alpha: <strong class="text-solana-green">+${alpha.toFixed(5)}</strong></span>
             </div>
           </div>
@@ -1137,7 +1156,7 @@ function renderDemoUI(state) {
           ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
           : 'bg-gray-800 text-gray-400 border-gray-700';
       const sign = dTok >= 0 ? '+' : '';
-      const decimals = currTok >= 100 ? 2 : currTok >= 1 ? 3 : 4;
+      const decimals = currTok >= 1000 ? 2 : currTok >= 100 ? 3 : currTok >= 10 ? 4 : 5;
 
       const sparkSvg = generateCoinQtySparkline(qHist, initTok, sym, 240, 48);
 
@@ -1149,14 +1168,14 @@ function renderDemoUI(state) {
               <span class="font-bold text-white text-xs">${sym} Coins Held</span>
             </div>
             <span class="px-2 py-0.5 rounded text-[10px] font-bold border ${badgeClass}">
-              ${sign}${dTok.toLocaleString(undefined, { maximumFractionDigits: decimals })} ${sym} (${sign}${dTokPct.toFixed(2)}%)
+              ${sign}${dTok.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals })} ${sym} (${sign}${dTokPct.toFixed(2)}%)
             </span>
           </div>
 
           <!-- Mini-Chart -->
           <div class="my-2.5 bg-solana-card/50 rounded-lg p-2 border border-solana-border/30">
             <div class="flex justify-between text-[9px] text-gray-400 mb-1">
-              <span>Init: ${initTok.toLocaleString(undefined, { maximumFractionDigits: decimals })}</span>
+              <span>Init: ${initTok.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}</span>
               <span class="${isUp ? 'text-solana-green' : isDown ? 'text-amber-300' : 'text-gray-300'} font-bold">
                 ${isUp ? '▲ Accumulated' : isDown ? '▼ Trimmed High' : '● Steady 50/50'}
               </span>
@@ -1170,15 +1189,15 @@ function renderDemoUI(state) {
           <div class="grid grid-cols-3 gap-1.5 text-[10px] bg-solana-card/30 p-2 rounded-lg border border-solana-border/20">
             <div>
               <span class="text-gray-500 block text-[9px]">Initial Qty</span>
-              <span class="text-gray-300 font-bold">${initTok.toLocaleString(undefined, { maximumFractionDigits: decimals })}</span>
+              <span class="text-gray-300 font-bold">${initTok.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}</span>
             </div>
             <div>
               <span class="text-gray-500 block text-[9px]">Current Qty</span>
-              <span class="text-white font-bold">${currTok.toLocaleString(undefined, { maximumFractionDigits: decimals })}</span>
+              <span class="text-white font-bold">${currTok.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}</span>
             </div>
             <div class="text-right">
               <span class="text-gray-500 block text-[9px]">Net Δ Coins</span>
-              <span class="${isUp ? 'text-solana-green' : isDown ? 'text-amber-300' : 'text-gray-400'} font-bold">${sign}${dTok.toLocaleString(undefined, { maximumFractionDigits: decimals })}</span>
+              <span class="${isUp ? 'text-solana-green' : isDown ? 'text-amber-300' : 'text-gray-400'} font-bold">${sign}${dTok.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}</span>
             </div>
           </div>
         </div>
@@ -1231,8 +1250,8 @@ function renderDemoUI(state) {
             <td class="py-2.5 px-3 font-bold text-white whitespace-nowrap text-xs">
               ${typeBadge} <span class="text-gray-300 font-normal text-[11px]">${t.action || ''}</span>
             </td>
-            <td class="py-2.5 px-3 text-gray-300 text-xs">${t.tranche_sol ? t.tranche_sol.toFixed(4) : '-'} SOL</td>
-            <td class="py-2.5 px-3 text-solana-purple font-bold text-xs">${t.tokens_traded ? t.tokens_traded.toLocaleString(undefined, { maximumFractionDigits: 2 }) : '-'}</td>
+            <td class="py-2.5 px-3 text-gray-300 text-xs">${t.tranche_sol ? t.tranche_sol.toFixed(5) : '-'} SOL</td>
+            <td class="py-2.5 px-3 text-solana-purple font-bold text-xs">${t.tokens_traded ? formatTokenQty(t.tokens_traded) : '-'}</td>
             <td class="py-2.5 px-3 text-gray-400 text-[11px]">${formatRatio(t.ratio || 0)}</td>
             <td class="py-2.5 px-3 font-bold text-xs whitespace-nowrap ${isPositive ? 'text-solana-green' : 'text-gray-400'}">
               ${t.net_profit_sol !== undefined ? (t.net_profit_sol >= 0 ? '+' : '') + t.net_profit_sol.toFixed(5) + ' SOL' : '-'}
