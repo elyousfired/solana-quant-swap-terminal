@@ -40,8 +40,8 @@ def run_tests():
     print("=== TEST 1: Initial 6-Basket Simultaneous 50/50 Setup ===")
     state = get_initial_state()
     assert state["strategy"] == STRATEGY_ID
-    assert state["rebalance_band_pct"] == 1.0
-    assert state["cross_spread_band_pct"] == 1.10
+    assert state["rebalance_band_pct"] == 0.60
+    assert state["cross_spread_band_pct"] == 0.55
 
     state = evaluate_demo_tick(make_mock_pairs(), sol_usd=92.89, client_state=state)
     assert state["active_slots_count"] == 6
@@ -108,8 +108,18 @@ def run_tests():
     print(f"  [OK] Total Cycles Completed: {state['total_cycles_completed']} (Cross-Swaps: {state['total_cross_swaps']})")
     print(f"  [OK] Harvested Volatility Alpha: +{state['total_harvested_alpha_sol']:.6f} SOL")
     print(f"  [OK] Pure Realized Surplus vs Static 50/50 HODL (AFTER ALL FEES): +{state['rebalance_surplus_sol']:.6f} SOL")
-    print("\nALL 6 PRIORITY WATERFALL & HOMOGENEITY TESTS PASSED 100%!")
+
+    print("\n=== TEST 7: Exact Sweet-Spot 0.59% Spread (KMNO +0.52% vs JUP -0.07%) ===")
+    s2 = get_initial_state()
+    s2 = evaluate_demo_tick(make_mock_pairs(), sol_usd=92.89, client_state=s2)
+    s2 = evaluate_demo_tick(make_mock_pairs({"KMNO": 1.0212, "JUP": 0.9972}), sol_usd=92.89, client_state=s2)
+    assert s2["total_cross_swaps"] == 1, "Expected KMNO (+0.52%) -> JUP (-0.07%) spread (+0.59% >= 0.55%) to execute!"
+    tx7 = s2["trade_history"][0]
+    assert tx7["net_profit_sol"] > 0
+    print(f"  [OK] Executed at +0.59% Spread: {tx7['action']} | Net Profit After Fees: +{tx7['net_profit_sol']:.6f} SOL")
+    print("\nALL 7 PRIORITY WATERFALL & SWEET-SPOT THRESHOLD TESTS PASSED 100%!")
 
 
 if __name__ == "__main__":
     run_tests()
+

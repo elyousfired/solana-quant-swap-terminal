@@ -36,16 +36,17 @@ INITIAL_GAS_RESERVE_SOL = 0.0400
 DEPLOYABLE_CAPITAL_SOL = INITIAL_CAPITAL_SOL - INITIAL_GAS_RESERVE_SOL  # 0.9600 SOL
 BASKET_ALLOCATION_SOL = DEPLOYABLE_CAPITAL_SOL / len(BASKET_TOKENS)     # 0.1600 SOL per basket
 
-REBALANCE_BAND_PCT = 1.0         # Direct SOL/Token Drift Band: |w_token - 50%| >= 1.0% (~4.0% price move)
-CROSS_SPREAD_BAND_PCT = 1.10     # 15-Pair Cross-Token Spread Band: (Drift_A - Drift_B) >= 1.10% (~4.4% spread)
-CROSS_MIN_TILT_PCT = 0.45        # Opposite-Tilt Filter: Drift_A >= +0.45% and Drift_B <= -0.45%
-MAX_CROSS_BUY_STREAK = 2         # Anti-Bleed Cap: max 2 consecutive cross-buys into same token before bounce
+REBALANCE_BAND_PCT = 0.60         # Direct SOL/Token Drift Band: |w_token - 50%| >= 0.60% (~2.4% price move)
+CROSS_SPREAD_BAND_PCT = 0.55      # 15-Pair Cross-Token Spread Band: (Drift_A - Drift_B) >= 0.55% (~2.2% spread)
+CROSS_MIN_TILT_PCT = 0.25         # Overweight Kaffa A minimum tilt: Drift_A >= +0.25%
+CROSS_MIN_LOW_TILT_PCT = 0.05     # Underweight Kaffa B minimum tilt: Drift_B <= -0.05%
+MAX_CROSS_BUY_STREAK = 2          # Anti-Bleed Cap: max 2 consecutive cross-buys into same token before bounce
 
-DEX_FEE_RATE = 0.0015            # 0.15% realistic Jupiter DEX swap fee
-SOL_TX_GAS_FEE = 0.000005        # 0.000005 SOL Solana network transaction fee
-MIN_REBALANCE_SOL = 0.0008       # Minimum SOL/Token swap size floor in SOL
-MIN_CROSS_SWAP_SOL = 0.0006      # Minimum Cross-Token swap size floor in SOL
-MIN_GAS_FLOOR_SOL = 0.0010       # Minimum gas reserve floor in SOL
+DEX_FEE_RATE = 0.0015             # 0.15% realistic Jupiter DEX swap fee
+SOL_TX_GAS_FEE = 0.000005         # 0.000005 SOL Solana network transaction fee
+MIN_REBALANCE_SOL = 0.0005        # Minimum SOL/Token swap size floor in SOL
+MIN_CROSS_SWAP_SOL = 0.00055      # Minimum Cross-Token swap size floor in SOL
+MIN_GAS_FLOOR_SOL = 0.0010        # Minimum gas reserve floor in SOL
 
 STATE_FILE_LOCAL = os.path.join(os.path.dirname(__file__), "demo_state.json")
 STATE_FILE_TMP = "/tmp/demo_state.json"
@@ -72,6 +73,7 @@ def get_initial_state() -> Dict[str, Any]:
         "rebalance_band_pct": REBALANCE_BAND_PCT,
         "cross_spread_band_pct": CROSS_SPREAD_BAND_PCT,
         "cross_min_tilt_pct": CROSS_MIN_TILT_PCT,
+        "cross_min_low_tilt_pct": CROSS_MIN_LOW_TILT_PCT,
         "max_cross_buy_streak": MAX_CROSS_BUY_STREAK,
         "basket_allocation_sol": BASKET_ALLOCATION_SOL,
         "gas_reserve_sol": INITIAL_GAS_RESERVE_SOL,
@@ -276,11 +278,13 @@ def evaluate_demo_tick(
     band_pct = REBALANCE_BAND_PCT
     cross_band_pct = CROSS_SPREAD_BAND_PCT
     cross_min_tilt = CROSS_MIN_TILT_PCT
+    cross_min_low_tilt = CROSS_MIN_LOW_TILT_PCT
     max_streak = MAX_CROSS_BUY_STREAK
 
     state["rebalance_band_pct"] = band_pct
     state["cross_spread_band_pct"] = cross_band_pct
     state["cross_min_tilt_pct"] = cross_min_tilt
+    state["cross_min_low_tilt_pct"] = cross_min_low_tilt
     state["max_cross_buy_streak"] = max_streak
 
     gas_reserve = float(state.get("gas_reserve_sol", INITIAL_GAS_RESERVE_SOL))
@@ -466,7 +470,7 @@ def evaluate_demo_tick(
             spread_drift = d_high - d_low
             streak_low = int(active_slots[low_sym].get("cross_buy_streak", 0))
 
-            if (d_high >= cross_min_tilt) and (d_low <= -cross_min_tilt) and (spread_drift >= cross_band_pct) and (streak_low < max_streak):
+            if (d_high >= cross_min_tilt) and (d_low <= -cross_min_low_tilt) and (spread_drift >= cross_band_pct) and (streak_low < max_streak):
                 candidate_cross_pairs.append(
                     {
                         "high_sym": high_sym,
@@ -498,7 +502,8 @@ def evaluate_demo_tick(
 
         excess_a_sol = max(0.0, val_a - cash_a)
         deficit_b_sol = max(0.0, cash_b - val_b)
-        delta_swap_sol = min(excess_a_sol, deficit_b_sol)
+        target_b_capacity = max(deficit_b_sol, MIN_CROSS_SWAP_SOL)
+        delta_swap_sol = min(excess_a_sol, target_b_capacity)
 
         if delta_swap_sol < MIN_CROSS_SWAP_SOL or gas_reserve < MIN_GAS_FLOOR_SOL:
             continue
@@ -820,7 +825,7 @@ def evaluate_demo_tick(
             spread_drift = d_high - d_low
             rel_price_spread_pct = spread_drift * 4.0
             streak_low = int(active_slots[low_sym].get("cross_buy_streak", 0))
-            is_opposite_tilt = (d_high >= cross_min_tilt) and (d_low <= -cross_min_tilt)
+            is_opposite_tilt = (d_high >= cross_min_tilt) and (d_low <= -cross_min_low_tilt)
             is_spread_ready = spread_drift >= cross_band_pct
             is_bleed_safe = streak_low < max_streak
             pair_key = tuple(sorted([s1, s2]))

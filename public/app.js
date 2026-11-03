@@ -611,7 +611,7 @@ function toggleCrossPairsView() {
   }
 }
 
-function buildCrossPairsFromSlots(activeSlots, crossBandPct = 1.10, maxStreak = 2) {
+function buildCrossPairsFromSlots(activeSlots, crossBandPct = 0.55, maxStreak = 2) {
   const syms = BASKET_ORDER.filter(s => activeSlots && activeSlots[s]);
   const list = [];
   for (let i = 0; i < syms.length; i++) {
@@ -626,7 +626,7 @@ function buildCrossPairsFromSlots(activeSlots, crossBandPct = 1.10, maxStreak = 
       const dLow = d1 >= d2 ? d2 : d1;
       const spread = dHigh - dLow;
       const streak = activeSlots[lowSym].cross_buy_streak || 0;
-      const isOpp = dHigh >= 0.45 && dLow <= -0.45;
+      const isOpp = dHigh >= 0.25 && dLow <= -0.05;
       const isReady = spread >= crossBandPct;
       const isSafe = streak < maxStreak;
       list.push({
@@ -696,7 +696,7 @@ function renderDemoUI(state) {
   if (!state) return;
 
   const isRunning = Boolean(state.is_running);
-  const bandPct = state.rebalance_band_pct || 1.0;
+  const bandPct = state.rebalance_band_pct || 0.60;
   const solUsd = state.sol_price_usd || 95.5;
 
   // 1. Top Status & Toggle Button
@@ -995,7 +995,7 @@ function renderDemoUI(state) {
   const crossTbody = document.getElementById('cross-pairs-radar-tbody');
   const crossCountBadge = document.getElementById('cross-pairs-count-badge');
   const crossBtnLabel = document.getElementById('btn-toggle-cross-pairs-label');
-  const crossBandPct = state.cross_spread_band_pct || 1.10;
+  const crossBandPct = state.cross_spread_band_pct || 0.55;
   const maxStreakVal = state.max_cross_buy_streak || 2;
 
   let allCrossPairs = (state.cross_pairs_status && state.cross_pairs_status.length >= 15)
@@ -1051,8 +1051,8 @@ function renderDemoUI(state) {
         cHtml += `
           <tr class="hover:bg-solana-dark/50 transition">
             <td class="py-2 px-3 font-bold text-cyan-300"><span class="text-gray-500 text-[10px] mr-1">#${idx + 1}</span>${cp.high_sym} &#10140; ${cp.low_sym}</td>
-            <td class="py-2 px-3 font-bold ${dHigh >= 0.45 ? 'text-solana-green' : 'text-gray-300'}">${dHigh >= 0 ? '+' : ''}${dHigh.toFixed(2)}% (${cp.high_sym})</td>
-            <td class="py-2 px-3 font-bold ${dLow <= -0.45 ? 'text-amber-300' : 'text-gray-300'}">${dLow >= 0 ? '+' : ''}${dLow.toFixed(2)}% (${cp.low_sym})</td>
+            <td class="py-2 px-3 font-bold ${dHigh >= 0.25 ? 'text-solana-green' : 'text-gray-300'}">${dHigh >= 0 ? '+' : ''}${dHigh.toFixed(2)}% (${cp.high_sym})</td>
+            <td class="py-2 px-3 font-bold ${dLow <= -0.05 ? 'text-amber-300' : 'text-gray-300'}">${dLow >= 0 ? '+' : ''}${dLow.toFixed(2)}% (${cp.low_sym})</td>
             <td class="py-2 px-3">
               <div class="flex items-center gap-2">
                 <span class="font-bold ${spread >= crossBandPct ? 'text-cyan-300' : 'text-gray-200'}">+${spread.toFixed(2)}%</span>

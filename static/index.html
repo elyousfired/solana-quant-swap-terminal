@@ -194,7 +194,7 @@
               </span>
             </div>
             <p class="text-xs text-gray-400 mt-1 font-mono">
-              Priority Waterfall: <span class="text-cyan-400 font-bold">#1 Direct Cross-Swap (A &#10140; B, Spread &ge; 1.10%)</span> &#10140; <span class="text-solana-green font-bold">#2 Residual &amp; Direct SOL Rebalance (&plusmn;1.0% Drift &asymp; &plusmn;4% Price)</span>.
+              Priority Waterfall: <span class="text-cyan-400 font-bold">#1 Direct Cross-Swap (A &#10140; B, Spread &ge; 0.55% &asymp; 2.2% Price)</span> &#10140; <span class="text-solana-green font-bold">#2 Residual &amp; Direct SOL Rebalance (&plusmn;0.60% Drift &asymp; &plusmn;2.4% Price)</span>.
             </p>
           </div>
 
@@ -217,9 +217,9 @@
             <span class="px-2 py-0.5 rounded bg-solana-green/20 text-solana-green font-bold border border-solana-green/30 text-[11px]">
               ⚖️ 6 SOL BASKETS + 🔄 15 CROSS PAIRS
             </span>
-            <span class="text-gray-300">Priority #1: <strong class="text-cyan-400">Cross-Swap (Spread &ge; 1.10% | Max 2 Streak)</strong></span>
+            <span class="text-gray-300">Priority #1: <strong class="text-cyan-400">Cross-Swap (Spread &ge; 0.55% | Max 2 Streak)</strong></span>
             <span class="text-gray-500">|</span>
-            <span class="text-gray-300">Priority #2: <strong class="text-amber-300">Residual &amp; Direct SOL (&plusmn;1.0% Drift)</strong></span>
+            <span class="text-gray-300">Priority #2: <strong class="text-amber-300">Residual &amp; Direct SOL (&plusmn;0.60% Drift)</strong></span>
           </div>
           <div class="flex flex-wrap items-center gap-2 text-[11px] text-gray-400">
             <span>1-Hop Fee: <strong class="text-gray-200">0.15% (50% Saved)</strong></span>
@@ -308,7 +308,7 @@
           <div class="flex items-center justify-between mb-3">
             <h4 class="text-xs font-bold uppercase tracking-wider text-gray-300 flex items-center gap-2">
               <i data-lucide="radar" class="w-4 h-4 text-amber-400 animate-spin"></i>
-              <span>Threshold Drift Band Monitor (&plusmn;1.0% Scale Drift &asymp; &plusmn;4% Price Across All 6 Baskets):</span>
+              <span>Threshold Drift Band Monitor (&plusmn;0.60% Scale Drift &asymp; &plusmn;2.4% Price Across All 6 Baskets):</span>
             </h4>
             <span class="text-[11px] font-mono text-amber-400">6 Direct SOL / Token Pairs</span>
           </div>
@@ -321,7 +321,7 @@
                   <th class="py-1.5 px-3">Live Price (SOL)</th>
                   <th class="py-1.5 px-3">Price &Delta;%</th>
                   <th class="py-1.5 px-3">Scale (SOL / Token)</th>
-                  <th class="py-1.5 px-3">Drift (Band &plusmn;1.0%)</th>
+                  <th class="py-1.5 px-3">Drift (Band &plusmn;0.60%)</th>
                   <th class="py-1.5 px-3 text-right">Threshold Status</th>
                 </tr>
               </thead>
@@ -341,7 +341,7 @@
                 <span>15 Cross-Token Pairs Triangular Rotation Matrix (التدوير المباشر بين العملات Token A &#10140; Token B):</span>
               </h4>
               <p class="text-[10px] text-gray-400 font-mono mt-0.5">
-                Scans all 15 relative pairs for Opposite Tilt (High &ge; +0.45% &amp; Low &le; &minus;0.45%) with Spread Drift &ge; 1.10% (&asymp;4.4% price divergence) &amp; Anti-Bleed Cap (Max 2 Streaks).
+                Scans all 15 relative pairs for Opposite Tilt (High &ge; +0.25% &amp; Low &le; &minus;0.05%) with Spread Drift &ge; 0.55% (&asymp;2.2% price divergence) &amp; Anti-Bleed Cap (Max 2 Streaks).
               </p>
             </div>
             <div class="flex items-center gap-2">
@@ -360,7 +360,7 @@
                   <th class="py-1.5 px-3">Cross Route (A &#10140; B)</th>
                   <th class="py-1.5 px-3">High Kaffa Drift</th>
                   <th class="py-1.5 px-3">Low Kaffa Drift</th>
-                  <th class="py-1.5 px-3">Spread Drift (&ge;1.10%)</th>
+                  <th class="py-1.5 px-3">Spread Drift (&ge;0.55%)</th>
                   <th class="py-1.5 px-3">Rel Price Spread</th>
                   <th class="py-1.5 px-3">Anti-Bleed Streak</th>
                   <th class="py-1.5 px-3 text-right">Cross-Rotation Status</th>
@@ -625,6 +625,6 @@
   </footer>
 
   <!-- SCRIPT -->
-  <script src="app.js?v=9.3"></script>
+  <script src="app.js?v=9.4"></script>
 </body>
 </html>
