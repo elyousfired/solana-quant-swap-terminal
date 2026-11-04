@@ -90,7 +90,7 @@
     <div class="flex items-center space-x-3 text-xs font-mono">
       <div class="bg-solana-card border border-solana-border px-3 py-2 rounded-lg">
         <div class="text-gray-400">ACTIVE STRATEGIES</div>
-        <div class="text-solana-green font-bold text-sm">4 Engines Live</div>
+        <div class="text-solana-green font-bold text-sm">5 Engines Live</div>
       </div>
       <div class="bg-solana-card border border-solana-border px-3 py-2 rounded-lg">
         <div class="text-gray-400">TARGET ALPHA</div>
@@ -99,27 +99,32 @@
     </div>
   </div>
 
-  <!-- NAVIGATION TABS (THE 4 DEDICATED PAGES) -->
+  <!-- NAVIGATION TABS (THE 5 DEDICATED PAGES) -->
   <nav class="max-w-7xl mx-auto px-4 mt-6 w-full">
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-2 border-b border-solana-border pb-4">
-      <button onclick="switchTab('lst')" id="tab-lst" class="tab-btn tab-active flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-solana-border text-sm font-semibold transition-all">
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-2 border-b border-solana-border pb-4">
+      <button onclick="switchTab('lst')" id="tab-lst" class="tab-btn tab-active flex items-center justify-center gap-2 px-3 py-3 rounded-xl border border-solana-border text-xs md:text-sm font-semibold transition-all">
         <i data-lucide="shield-check" class="w-4 h-4 text-solana-green"></i>
-        <span>1. LST Depeg Arbitrage</span>
+        <span>1. LST Depeg Arb</span>
       </button>
 
-      <button onclick="switchTab('pairs')" id="tab-pairs" class="tab-btn flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-solana-border text-sm font-semibold text-gray-400 hover:text-white transition-all">
+      <button onclick="switchTab('pairs')" id="tab-pairs" class="tab-btn flex items-center justify-center gap-2 px-3 py-3 rounded-xl border border-solana-border text-xs md:text-sm font-semibold text-gray-400 hover:text-white transition-all">
         <i data-lucide="bar-chart-2" class="w-4 h-4 text-solana-purple"></i>
-        <span>2. Pairs Quant Matrix (Shannon & Z-Score)</span>
+        <span>2. Pairs Quant Matrix</span>
       </button>
 
-      <button onclick="switchTab('loops')" id="tab-loops" class="tab-btn flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-solana-border text-sm font-semibold text-gray-400 hover:text-white transition-all">
+      <button onclick="switchTab('loops')" id="tab-loops" class="tab-btn flex items-center justify-center gap-2 px-3 py-3 rounded-xl border border-solana-border text-xs md:text-sm font-semibold text-gray-400 hover:text-white transition-all">
         <i data-lucide="repeat" class="w-4 h-4 text-cyan-400"></i>
-        <span>3. Circular Multi-Hop Loops</span>
+        <span>3. Circular Multi-Hop</span>
       </button>
 
-      <button onclick="switchTab('shannon')" id="tab-shannon" class="tab-btn flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-solana-border text-sm font-semibold text-gray-400 hover:text-white transition-all">
+      <button onclick="switchTab('shannon')" id="tab-shannon" class="tab-btn flex items-center justify-center gap-2 px-3 py-3 rounded-xl border border-solana-border text-xs md:text-sm font-semibold text-gray-400 hover:text-white transition-all">
         <i data-lucide="activity" class="w-4 h-4 text-amber-400"></i>
         <span>4. Shannon's Demon 50/50</span>
+      </button>
+
+      <button onclick="switchTab('asmaker')" id="tab-asmaker" class="tab-btn flex items-center justify-center gap-2 px-3 py-3 rounded-xl border border-solana-green/40 bg-solana-green/5 text-xs md:text-sm font-semibold text-solana-green hover:text-white transition-all">
+        <i data-lucide="cpu" class="w-4 h-4 text-solana-green"></i>
+        <span>5. Avellaneda-Stoikov Maker</span>
       </button>
     </div>
   </nav>
@@ -555,6 +560,157 @@
     </section>
 
     <!-- ========================================== -->
+    <!-- PAGE 5 (INDEPENDENT): AVELLANEDA-STOIKOV SMART MAKER & DLMM ENGINE -->
+    <!-- ========================================== -->
+    <section id="page-asmaker" class="tab-page hidden space-y-6">
+      <div class="bg-solana-card border border-solana-green/30 rounded-2xl p-6 shadow-xl">
+        <!-- Header & Controls -->
+        <div class="flex flex-col md:flex-row md:items-center justify-between pb-4 border-b border-solana-border gap-4">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-solana-green/20 text-solana-green border border-solana-green/40">
+                ENGINE 5 • STANDALONE MODULE
+              </span>
+              <span class="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-solana-purple/20 text-solana-purple border border-solana-purple/40">
+                ZERO TAKER FEES • +8.5 BPS MAKER REBATE
+              </span>
+            </div>
+            <h2 class="text-lg font-bold text-white flex items-center gap-2 mt-2">
+              <i data-lucide="cpu" class="text-solana-green w-5 h-5"></i>
+              Avellaneda-Stoikov Inventory-Skewed Smart Maker &amp; DLMM Engine (1.0 SOL Vault)
+            </h2>
+            <p class="text-xs text-gray-400 mt-1">
+              Starts <strong class="text-solana-green">100% in SOL Cash</strong> (zero blind token bagholding). Quotes skewed Post-Only Maker Bids &amp; Asks using live L1 Orderbook <code class="text-cyan-300">Micro-Price</code>, <code class="text-cyan-300">OBI</code>, and <code class="text-solana-purple">r(s, q) = s + β·α - q·γ·σ²·τ</code> to earn Maker Fees and evacuate inventory back to pure SOL.
+            </p>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-2">
+            <span id="as-bot-status-badge" class="flex items-center gap-1.5 text-xs text-solana-green font-mono bg-solana-green/10 border border-solana-green/30 px-3 py-1 rounded-full">
+              <span class="w-2 h-2 rounded-full bg-solana-green animate-pulse"></span>
+              MAKER QUOTING LIVE (2.5s)
+            </span>
+            <button id="as-toggle-btn" onclick="toggleAsMakerBot()" class="px-3 py-1.5 bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded-xl text-xs font-mono font-bold hover:bg-amber-500/30 transition">
+              Pause Maker Engine
+            </button>
+            <button onclick="resetAsMakerBot()" class="px-3 py-1.5 bg-red-500/20 text-red-300 border border-red-500/40 rounded-xl text-xs font-mono font-bold hover:bg-red-500/30 transition">
+              Reset 1.0 SOL Vault
+            </button>
+          </div>
+        </div>
+
+        <!-- 4 Top Quantitative KPI Cards -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-5">
+          <!-- KPI 1 -->
+          <div class="bg-solana-dark border border-solana-border rounded-xl p-4">
+            <div class="text-[11px] font-mono text-gray-400 flex items-center justify-between">
+              <span>TOTAL MAKER VAULT EQUITY</span>
+              <span class="text-solana-green">1.00000 SOL INIT</span>
+            </div>
+            <div id="as-kpi-equity" class="text-lg font-bold text-white font-mono mt-1">1.00000 SOL</div>
+            <div id="as-kpi-pnl" class="text-xs font-mono mt-1 font-bold text-solana-green">+0.00000 SOL (+0.00%)</div>
+          </div>
+
+          <!-- KPI 2 -->
+          <div class="bg-solana-dark border border-solana-green/30 rounded-xl p-4">
+            <div class="text-[11px] font-mono text-gray-400 flex items-center justify-between">
+              <span>ACCUMULATED PURE SOL PROFIT</span>
+              <span class="text-emerald-400">SPREAD + SKEW</span>
+            </div>
+            <div id="as-kpi-acc-sol" class="text-lg font-bold text-solana-green font-mono mt-1">+0.00000 SOL</div>
+            <div id="as-kpi-round-trips" class="text-[11px] font-mono text-gray-400 mt-1">0 Full Cycles (Bid: 0 | Ask: 0)</div>
+          </div>
+
+          <!-- KPI 3 -->
+          <div class="bg-solana-dark border border-cyan-500/30 rounded-xl p-4">
+            <div class="text-[11px] font-mono text-gray-400 flex items-center justify-between">
+              <span>MAKER REBATES &amp; DLMM FEES EARNED</span>
+              <span class="text-cyan-300">+0.085% / FILL</span>
+            </div>
+            <div id="as-kpi-rebates" class="text-lg font-bold text-cyan-300 font-mono mt-1">+0.00000 SOL</div>
+            <div id="as-kpi-fee-vs-taker" class="text-[11px] font-mono text-gray-400 mt-1">Gas Paid: -0.00000 SOL | Net Edge: +0.00000 SOL</div>
+          </div>
+
+          <!-- KPI 4 -->
+          <div class="bg-solana-dark border border-solana-purple/30 rounded-xl p-4">
+            <div class="text-[11px] font-mono text-gray-400 flex items-center justify-between">
+              <span>SAFE SOL CASH IN VAULTS</span>
+              <span class="text-solana-purple">ANTI-BAGHOLDER</span>
+            </div>
+            <div id="as-kpi-vault-cash" class="text-lg font-bold text-white font-mono mt-1">0.96000 SOL</div>
+            <div id="as-kpi-inv-summary" class="text-[11px] font-mono text-gray-400 mt-1">Active Inventory: 0.0000 SOL | Toxic Dump Shields: 0</div>
+          </div>
+        </div>
+
+        <!-- Mathematical Formula Banner -->
+        <div class="mt-5 p-3.5 rounded-xl bg-gradient-to-r from-solana-purple/10 via-solana-dark to-solana-green/10 border border-solana-border flex flex-col md:flex-row md:items-center justify-between gap-2 text-xs font-mono">
+          <div class="text-gray-300">
+            <span class="text-solana-green font-bold">Avellaneda-Stoikov PDE:</span>
+            <code class="text-white ml-1">r(s, q) = s · (1 + β·α_micro - q·γ·σ²·τ)</code>
+            <span class="text-gray-500 mx-2">|</span>
+            <span class="text-cyan-300 font-bold">Micro-Price:</span>
+            <code class="text-white ml-1">P_micro = (Q_bid·P_ask + Q_ask·P_bid) / (Q_bid + Q_ask)</code>
+          </div>
+          <div class="text-[11px] text-amber-300">
+            🛡️ When q &gt; 0: Ask drops to evacuate token ➔ SOL | When OBI &lt; -0.38: Bid pulls to block falling knife
+          </div>
+        </div>
+
+        <!-- 6 Maker Vault Cards Grid -->
+        <div class="mt-6">
+          <h3 class="text-sm font-bold text-white font-mono uppercase tracking-wider mb-3 flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-solana-green"></span>
+            6 Active Avellaneda-Stoikov Maker Vaults (0.16000 SOL Each • Starts 100% in SOL)
+          </h3>
+          <div id="as-maker-cards-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div class="col-span-full text-center py-8 text-gray-500 font-mono text-xs">
+              Initializing Avellaneda-Stoikov Maker Vaults &amp; L1 Orderbook Microstructure feeds...
+            </div>
+          </div>
+        </div>
+
+        <!-- Live Maker Fill & Rebate Ledger -->
+        <div class="mt-6 bg-solana-dark border border-solana-border rounded-2xl p-4">
+          <div class="flex items-center justify-between pb-3 border-b border-solana-border">
+            <div>
+              <h3 class="text-sm font-bold text-white font-mono">
+                Live Maker Execution &amp; Fee Rebate Ledger (Phoenix CLOB / Meteora DLMM Bins)
+              </h3>
+              <p class="text-[11px] text-gray-400">
+                Every fill earns +0.085% Maker Rebate instead of paying -0.15% Taker Fee, compounding pure SOL in the vault.
+              </p>
+            </div>
+            <span class="text-xs font-mono text-cyan-300 bg-cyan-500/10 border border-cyan-500/30 px-2.5 py-1 rounded-full">
+              Maker Rebate: +8.5 bps
+            </span>
+          </div>
+
+          <div class="overflow-x-auto mt-3">
+            <table class="w-full text-left border-collapse font-mono text-xs">
+              <thead>
+                <tr class="border-b border-solana-border text-gray-400 text-[11px]">
+                  <th class="py-2 px-3">TIME</th>
+                  <th class="py-2 px-3">MARKET</th>
+                  <th class="py-2 px-3">FILL TYPE</th>
+                  <th class="py-2 px-3">EXECUTION DETAILS</th>
+                  <th class="py-2 px-3 text-right">EXEC RATIO (SOL)</th>
+                  <th class="py-2 px-3 text-right">MAKER REBATE EARNED</th>
+                  <th class="py-2 px-3 text-right">NET SOL ADDED</th>
+                </tr>
+              </thead>
+              <tbody id="as-maker-ledger-tbody">
+                <tr>
+                  <td colspan="7" class="text-center py-6 text-gray-500">
+                    Waiting for Maker Bid / Ask fills...
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================== -->
     <!-- INTERACTIVE JUPITER SWAP SIMULATOR -->
     <!-- ========================================== -->
     <section class="bg-solana-card border border-solana-border rounded-2xl p-6 mt-8">
@@ -625,6 +781,7 @@
   </footer>
 
   <!-- SCRIPT -->
-  <script src="app.js?v=9.4"></script>
+  <script src="app.js?v=9.5"></script>
+  <script src="as_maker.js?v=1.0"></script>
 </body>
 </html>

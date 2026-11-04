@@ -32,6 +32,10 @@ function switchTab(tabId) {
   // Refresh data for active tab
   if (tabId === 'lst') loadLstDepeg();
   if (tabId === 'loops') loadLoops();
+  if (tabId === 'asmaker' && typeof window.loadAsMakerPage === 'function') {
+    window.loadAsMakerPage();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
   if (tabId === 'pairs' || tabId === 'shannon') {
     loadShannon();
     loadPairsRotation();

@@ -722,6 +722,69 @@ def demo_sync_api(req: DemoActionRequest):
         return sync_demo_state(req.state)
     return load_demo_state()
 
+# =============================================================
+# ENGINE 5 (INDEPENDENT): AVELLANEDA-STOIKOV SMART MAKER & DLMM
+# =============================================================
+from backend.as_maker_engine import (
+    load_as_state,
+    reset_as_state,
+    toggle_as_state,
+    evaluate_as_maker_tick
+)
+
+@app.get("/api/as-maker/state")
+def get_as_maker_state_api():
+    """Returns current Avellaneda-Stoikov Smart Maker portfolio status."""
+    state = load_as_state()
+    if state.get("is_running", False) and not state.get("maker_slots"):
+        try:
+            pairs_data = get_pairs_rotation()
+            sol_p = fetch_jup_prices([TOKEN_MINTS["SOL"]]).get(TOKEN_MINTS["SOL"], {}).get("usdPrice", 95.0)
+            state = evaluate_as_maker_tick(pairs_data, sol_p, client_state=state)
+        except Exception as e:
+            print("Error initializing AS Maker state:", e)
+    return state
+
+@app.post("/api/as-maker/tick")
+def as_maker_tick_api(req: Optional[DemoActionRequest] = None):
+    """Real-time tick evaluation for the independent Avellaneda-Stoikov Smart Maker engine."""
+    client_state = req.state if req else None
+    try:
+        pairs_data = get_pairs_rotation()
+        sol_p = fetch_jup_prices([TOKEN_MINTS["SOL"]]).get(TOKEN_MINTS["SOL"], {}).get("usdPrice", 95.0)
+        return evaluate_as_maker_tick(pairs_data, sol_p, client_state=client_state)
+    except Exception as e:
+        curr_state = client_state or load_as_state()
+        return {"error": str(e), "state": curr_state}
+
+@app.post("/api/as-maker/toggle")
+def as_maker_toggle_api(req: Optional[DemoActionRequest] = None, running: Optional[bool] = Query(None)):
+    """Toggle Avellaneda-Stoikov Smart Maker execution (Start / Pause)."""
+    target_running = req.running if (req and req.running is not None) else running
+    client_state = req.state if req else None
+    state = toggle_as_state(target_running, client_state)
+    if state.get("is_running", False):
+        try:
+            pairs_data = get_pairs_rotation()
+            sol_p = fetch_jup_prices([TOKEN_MINTS["SOL"]]).get(TOKEN_MINTS["SOL"], {}).get("usdPrice", 95.0)
+            state = evaluate_as_maker_tick(pairs_data, sol_p, client_state=state)
+        except Exception as e:
+            print("Error ticking AS Maker on toggle:", e)
+    return state
+
+@app.post("/api/as-maker/reset")
+def as_maker_reset_api(req: Optional[DemoActionRequest] = None):
+    """Reset Avellaneda-Stoikov Smart Maker state and restart fresh with 1.0 SOL in 100% SOL Cash."""
+    client_state = req.state if req else None
+    state = reset_as_state(client_state)
+    try:
+        pairs_data = get_pairs_rotation()
+        sol_p = fetch_jup_prices([TOKEN_MINTS["SOL"]]).get(TOKEN_MINTS["SOL"], {}).get("usdPrice", 95.0)
+        state = evaluate_as_maker_tick(pairs_data, sol_p, client_state=state)
+    except Exception as e:
+        print("Error ticking AS Maker on reset:", e)
+    return state
+
 # Mount static files dynamically for local execution
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
