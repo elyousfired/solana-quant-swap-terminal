@@ -641,17 +641,19 @@
           </div>
         </div>
 
-        <!-- Mathematical Formula Banner -->
-        <div class="mt-5 p-3.5 rounded-xl bg-gradient-to-r from-solana-purple/10 via-solana-dark to-solana-green/10 border border-solana-border flex flex-col md:flex-row md:items-center justify-between gap-2 text-xs font-mono">
-          <div class="text-gray-300">
-            <span class="text-solana-green font-bold">Avellaneda-Stoikov PDE:</span>
-            <code class="text-white ml-1">r(s, q) = s · (1 + β·α_micro - q·γ·σ²·τ)</code>
-            <span class="text-gray-500 mx-2">|</span>
-            <span class="text-cyan-300 font-bold">Micro-Price:</span>
-            <code class="text-white ml-1">P_micro = (Q_bid·P_ask + Q_ask·P_bid) / (Q_bid + Q_ask)</code>
+        <!-- 3-Step Plain Explanation Banner -->
+        <div class="mt-5 p-3.5 rounded-xl bg-gradient-to-r from-solana-purple/10 via-solana-dark to-solana-green/10 border border-solana-border grid grid-cols-1 md:grid-cols-3 gap-3 text-xs font-mono">
+          <div class="flex items-center gap-2 text-gray-200">
+            <span class="px-2 py-0.5 rounded bg-solana-green/20 text-solana-green font-bold">STEP 1</span>
+            <span>Starts <strong>100% in SOL</strong>. Only buys when live Jupiter price dips to touch <strong>Buy Target</strong>.</span>
           </div>
-          <div class="text-[11px] text-amber-300">
-            🛡️ When q &gt; 0: Ask drops to evacuate token ➔ SOL | When OBI &lt; -0.38: Bid pulls to block falling knife
+          <div class="flex items-center gap-2 text-gray-200">
+            <span class="px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-bold">STEP 2</span>
+            <span><strong>Crash Shield:</strong> If token dumps fast, the bot pauses buying so it never catches a falling knife.</span>
+          </div>
+          <div class="flex items-center gap-2 text-gray-200">
+            <span class="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold">STEP 3</span>
+            <span>Sells <strong>100% back to SOL</strong> when price touches <strong>Sell Target</strong> + earns <strong>+0.085% Maker Fee</strong>!</span>
           </div>
         </div>
 
@@ -782,6 +784,6 @@
 
   <!-- SCRIPT -->
   <script src="app.js?v=9.5"></script>
-  <script src="as_maker.js?v=1.0"></script>
+  <script src="as_maker.js?v=2.0"></script>
 </body>
 </html>

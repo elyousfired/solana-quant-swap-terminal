@@ -1,6 +1,6 @@
 """
-Automated Verification Suite for Engine 5:
-Avellaneda-Stoikov Inventory-Skewed Smart Maker & Dynamic DLMM Bin Engine (backend/as_maker_engine.py)
+Automated Verification Suite for Engine 5 (V2 Real Price-Action Execution):
+Smart Maker & Dynamic DLMM Bin Engine (backend/as_maker_engine.py)
 """
 
 from backend.as_maker_engine import (
@@ -44,37 +44,36 @@ def run_tests():
     assert state["total_token_val_sol"] == 0.0
     print(f"  [OK] 6 Maker Vaults Initialized | Total Pure SOL in Vaults: {state['total_sol_vault']:.5f} SOL | Tokens Held: 0.0")
 
-    print("\n=== TEST 2: Toxic Flow Shield (Bearish Dump -2.5% -> Bid Pulled, Zero Falling Knife) ===")
+    print("\n=== TEST 2: Stationary Market (10 Ticks With Zero Price Change -> ZERO Fake Fills) ===")
+    for _ in range(10):
+        state = evaluate_as_maker_tick(make_mock_pairs(), sol_usd=84.50, client_state=state)
+    assert state["total_maker_fills"] == 0, "Stationary prices must NEVER trigger fake fills!"
+    print("  [OK] 10 stationary ticks -> 0 Fills (100% Real Price-Action Enforcement!)")
+
+    print("\n=== TEST 3: Crash Shield (Sharp -2.5% Dump -> Buy Paused, Zero Falling Knife) ===")
     state = evaluate_as_maker_tick(make_mock_pairs({"JUP": 0.975}), sol_usd=84.50, client_state=state)
     jup_slot = state["maker_slots"]["JUP"]
-    assert jup_slot["tokens_held"] == 0.0, "Toxic Dump Shield must prevent buying during a sharp -2.5% crash tick!"
+    assert jup_slot["tokens_held"] == 0.0, "Crash Shield must prevent buying during a sharp -2.5% crash tick!"
     assert jup_slot["toxic_shield_active"] is True
-    print(f"  [OK] JUP Dumped -2.5% | OBI: {jup_slot['obi']:+.2f} | Shield Active: {jup_slot['toxic_shield_active']} | JUP Bought: 0.0")
+    print(f"  [OK] JUP Dumped -2.5% | Shield Active: {jup_slot['toxic_shield_active']} | JUP Bought: 0.0")
 
-    print("\n=== TEST 3: Stabilization & Discounted Maker Bid Fill (+Maker Rebate Earned) ===")
-    # Stabilize JUP at 0.976 and let resting Maker Bid capture discounted flow
-    state = evaluate_as_maker_tick(make_mock_pairs({"JUP": 0.976}), sol_usd=84.50, client_state=state)
-    state = evaluate_as_maker_tick(make_mock_pairs({"JUP": 0.9755}), sol_usd=84.50, client_state=state)
-    assert state["total_bid_fills"] >= 1, "Expected Maker Bid fill after stabilization!"
-    assert state["total_maker_rebates_sol"] > 0.0
-    jup_slot = state["maker_slots"]["JUP"]
-    print(f"  [OK] Total Bid Fills: {state['total_bid_fills']} | Maker Rebates Earned: +{state['total_maker_rebates_sol']:.6f} SOL")
-    print(f"  [OK] JUP Inventory Skew Active: q={jup_slot['inventory_q_pct']}% | Skew={jup_slot['skew_bps']} bps")
+    print("\n=== TEST 4: Real Gentle Dip (-0.18%) Touching Buy Target -> Real Maker Bid Fill ===")
+    # RAY dips gently by -0.18% (crossing the -0.12% Buy Target without triggering the -0.45% Crash Shield)
+    state = evaluate_as_maker_tick(make_mock_pairs({"JUP": 0.975, "RAY": 0.9982}), sol_usd=84.50, client_state=state)
+    assert state["total_bid_fills"] == 1, "Expected RAY real -0.18% dip to fill Maker Bid!"
+    ray_slot = state["maker_slots"]["RAY"]
+    assert ray_slot["tokens_held"] > 0
+    print(f"  [OK] RAY Bought on Real -0.18% Dip: {ray_slot['tokens_held']:.4f} RAY | Maker Fee Earned: +{ray_slot['maker_rebates_earned_sol']:.6f} SOL")
 
-    print("\n=== TEST 4: Avellaneda-Stoikov Skew Ask Fill -> 100% Evacuation Back to Pure SOL ===")
-    # Slight +0.6% bounce triggers Maker Ask fills across active slots, evacuating tokens back to SOL + Maker Rebate
-    state = evaluate_as_maker_tick(
-        make_mock_pairs({"JUP": 0.983, "RAY": 1.006, "JTO": 1.006, "KMNO": 1.006, "MET": 1.006, "PUMP": 1.006}),
-        sol_usd=84.50,
-        client_state=state,
-    )
-    assert state["total_ask_fills"] >= 1, "Expected Maker Ask fill on +0.6% bounce!"
-    assert state["accumulated_sol_profit"] > 0.00040, "Expected meaningful SOL profit (> +0.00040 SOL)!"
-    print(f"  [OK] Completed Round-Trips: {state['total_round_trips']}")
-    print(f"  [OK] Accumulated Pure SOL Profit: +{state['accumulated_sol_profit']:.5f} SOL")
-    print(f"  [OK] Total Maker Rebates Earned: +{state['total_maker_rebates_sol']:.5f} SOL")
-    print(f"  [OK] Total Portfolio Equity: {state['total_equity_sol']:.5f} SOL")
-    print("\nALL 4 AVELLANEDA-STOIKOV SMART MAKER TESTS PASSED 100%!")
+    print("\n=== TEST 5: Real Bounce (+0.30%) Crossing Sell Target -> 100% Sold Back to SOL ===")
+    state = evaluate_as_maker_tick(make_mock_pairs({"JUP": 0.975, "RAY": 1.0015}), sol_usd=84.50, client_state=state)
+    assert state["total_ask_fills"] == 1, "Expected RAY bounce to cross Sell Target and evacuate 100% to SOL!"
+    ray_slot = state["maker_slots"]["RAY"]
+    assert ray_slot["tokens_held"] == 0.0
+    assert ray_slot["sol_cash"] > 0.16000
+    print(f"  [OK] RAY Vault Back in 100% SOL: {ray_slot['sol_cash']:.5f} SOL (Started 0.16000 SOL)")
+    print(f"  [OK] Net Pure SOL Profit Locked: +{state['accumulated_sol_profit']:.5f} SOL | Maker Fees Earned: +{state['total_maker_rebates_sol']:.5f} SOL")
+    print("\nALL 5 REAL-EXECUTION SMART MAKER TESTS PASSED 100%!")
 
 
 if __name__ == "__main__":

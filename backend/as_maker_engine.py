@@ -1,20 +1,19 @@
 """
 Solana Quant Swap Terminal — Engine 5 (100% Independent Module Built From Scratch)
-Strategy: Avellaneda-Stoikov Inventory-Skewed Smart Maker & Dynamic DLMM Bin Engine
+Strategy: Smart Maker & Dynamic DLMM Bin Engine (Real Price-Action Execution V2)
 -----------------------------------------------------------------------------------
-Core Quantitative Principles:
-1. ZERO Blind Initial Buy: Starts 100% in SOL Cash (0.96000 SOL across 6 Maker Vaults + 0.04000 SOL Gas Reserve).
-   Never buys tokens blindly at T=0; only acquires inventory via discounted Maker Bids when Micro-Price/OFI is safe.
-2. Maker Fee Rebate / DLMM Bin Yield (+0.08% per leg = +0.16% round-trip EARNED instead of -0.30% Taker Fee PAID):
-   Executes as a Post-Only CLOB Maker (Phoenix / Manifest) & Meteora DLMM Dynamic Bin Provider.
-3. Live Orderbook Microstructure Radar (Binance/Bybit L1 Book + Jupiter Live Feed):
-   Computes Volume-Weighted Micro-Price (P_micro), Order Book Imbalance (OBI), and Order Flow Imbalance (OFI).
-   Activates Toxic Flow Shield when OBI/OFI is bearish, pulling Bids so the bot NEVER catches a falling knife.
-4. Avellaneda-Stoikov Inventory Skew:
-   Reservation Price: r(s, q) = s * (1 + beta * alpha_micro - q * gamma * sigma^2 * tau)
-   Optimal Half-Spreads: delta_bid, delta_ask skewed dynamically by inventory q in [0, 1].
-   Whenever inventory q > 0, the engine aggressively lowers Ask toward r(s, q) to evacuate tokens back into pure SOL,
-   and pushes Bid deep down to prevent inventory accumulation.
+Core Rules:
+1. Starts 100% in SOL Cash (0.96000 SOL across 6 Vaults + 0.04000 SOL Gas Reserve). Zero blind buying at T=0.
+2. 100% Real Jupiter Price-Crossing Execution:
+   - ZERO artificial fills when live price is stationary (curr_ratio == prev_ratio).
+   - Maker Bid (SOL -> Token) ONLY fills when the live Jupiter ratio ACTUALLY drops to touch/cross `bid_quote`
+     AND Crash Shield is NOT active (not a free-falling dump).
+   - Maker Ask (Token -> SOL) ONLY fills when the live Jupiter ratio ACTUALLY rises to touch/cross `ask_quote`.
+3. Maker Fee Rebate (+0.085% per fill = +0.17% round-trip EARNED instead of paying -0.30% Taker Fee).
+4. Inventory Skew (Anti-Bagholder):
+   - While holding a token, if it takes longer to bounce, `ask_quote` dynamically lowers toward break-even
+     (protected by the +0.17% Maker Rebate buffer) so the bot evacuates back to 100% SOL on the first real bounce
+     and NEVER gets stuck forever.
 """
 
 import os
@@ -25,7 +24,7 @@ import urllib.request
 from typing import Dict, Any, List, Optional
 
 STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "as_maker_state.json")
-STRATEGY_ID = "AVELLANEDA_STOIKOV_SMART_MAKER_V1"
+STRATEGY_ID = "AVELLANEDA_STOIKOV_SMART_MAKER_V2"
 
 MAKER_MARKETS = ["JUP", "RAY", "JTO", "KMNO", "MET", "PUMP"]
 
@@ -35,14 +34,11 @@ GAS_RESERVE_SOL = 0.04000
 ACTIVE_CAPITAL_SOL = 0.96000  # 6 Maker Vaults x 0.16000 SOL (100% SOL at start!)
 VAULT_ALLOCATION_SOL = round(ACTIVE_CAPITAL_SOL / len(MAKER_MARKETS), 6)  # 0.16000 SOL
 
-# Avellaneda-Stoikov & Microstructure Hyperparameters
-GAMMA_RISK_AVERSION = 2.80      # Inventory risk aversion parameter (gamma)
-KAPPA_INTENSITY = 1.65          # Order arrival intensity parameter (kappa)
-BETA_MICRO_ALPHA = 0.65         # Weight on Micro-Price / OFI alpha signal
-MAKER_REBATE_RATE = 0.00085     # +0.085% (+8.5 bps) Maker Rebate + DLMM Dynamic Bin Fee EARNED per fill
+# Smart Maker Parameters
+MAKER_REBATE_RATE = 0.00085     # +0.085% (+8.5 bps) Maker Rebate / DLMM Bin Fee EARNED per fill
 SOL_BASE_GAS_FEE = 0.000005     # 5,000 Lamports Solana base signature fee
 MIN_GAS_FLOOR_SOL = 0.00500
-TRANCHE_UTILIZATION = 0.85      # Deploy 85% of vault (0.13600 SOL) per Maker Bid fill for chunky SOL profit
+TRANCHE_UTILIZATION = 0.85      # Deploy 85% of vault (0.13600 SOL) per Maker Bid fill
 
 # Live L1 Orderbook Cache (Binance / Bybit BookTicker)
 BOOK_CACHE: Dict[str, Dict[str, float]] = {}
@@ -53,7 +49,7 @@ BOOK_CACHE_TTL: float = 2.0
 def fetch_live_l1_books() -> Dict[str, Dict[str, float]]:
     """
     Fetches real-time Level-1 Best Bid / Best Ask prices and quantities for SOL and all 6 tokens
-    to compute authentic Volume-Weighted Micro-Price and Order Book Imbalance (OBI).
+    to measure real-time buying vs selling pressure (Order Book Imbalance).
     """
     global BOOK_CACHE, BOOK_CACHE_TS
     now = time.time()
@@ -70,7 +66,6 @@ def fetch_live_l1_books() -> Dict[str, Dict[str, float]]:
         "PUMPUSDT": "PUMP",
     }
 
-    # Primary: Binance BookTicker API
     try:
         symbols_json = json.dumps(list(symbols_map.keys())).replace(" ", "")
         url = f"https://api.binance.com/api/v3/ticker/bookTicker?symbols={symbols_json}"
@@ -102,7 +97,6 @@ def fetch_live_l1_books() -> Dict[str, Dict[str, float]]:
     except Exception:
         pass
 
-    # Fallback: Bybit V5 Spot Tickers API (if Binance is geo-restricted on cloud worker)
     try:
         url = "https://api.bybit.com/v5/market/tickers?category=spot"
         req = urllib.request.Request(url, headers={"User-Agent": "SolanaQuantTerminal/2.0"})
@@ -145,8 +139,7 @@ def compute_microstructure_metrics(
     l1_books: Dict[str, Dict[str, float]],
 ) -> Dict[str, float]:
     """
-    Computes Volume-Weighted Micro-Price, Level-1 Order Book Imbalance (OBI),
-    Order Flow Imbalance (OFI), and Short-Term Micro-Alpha (alpha_micro).
+    Computes live buying/selling pressure (OBI) and detects sharp downward dumps.
     """
     tok_book = l1_books.get(sym)
     sol_book = l1_books.get("SOL")
@@ -165,25 +158,21 @@ def compute_microstructure_metrics(
             tok_micro_usd = (bid_p + ask_p) * 0.5
             obi = 0.0
 
+        velocity_obi = max(-0.95, min(0.95, tick_ret_pct * 1.8))
+        if abs(tick_ret_pct) >= 0.20:
+            obi = (0.35 * obi) + (0.65 * velocity_obi)
+
         sol_mid_usd = (sol_book["bid_p"] + sol_book["ask_p"]) * 0.5
         cex_micro_ratio = tok_micro_usd / sol_mid_usd if sol_mid_usd > 0 else curr_ratio
-
-        # Blend CEX L1 Book OBI with real-time tick displacement velocity
-        velocity_obi = max(-0.95, min(0.95, tick_ret_pct * 1.6))
-        if abs(tick_ret_pct) >= 0.25:
-            obi = (0.40 * obi) + (0.60 * velocity_obi)
-
-        # Blend CEX Lead-Lag displacement with local Jupiter ratio
         lead_lag_pct = ((cex_micro_ratio - curr_ratio) / curr_ratio) * 100.0 if curr_ratio > 0 else 0.0
-        lead_lag_clamped = max(-1.2, min(1.2, lead_lag_pct))
-        micro_ratio = curr_ratio * (1.0 + (0.35 * lead_lag_clamped / 100.0) + (0.0015 * obi))
+        lead_lag_clamped = max(-1.0, min(1.0, lead_lag_pct))
+        micro_ratio = curr_ratio * (1.0 + (0.30 * lead_lag_clamped / 100.0))
     else:
-        # Derive synthetic orderbook pressure from real-time Jupiter tick velocity
         obi = max(-0.95, min(0.95, (tick_ret_pct * 1.8) + (0.35 * prev_obi)))
-        micro_ratio = curr_ratio * (1.0 + (0.0020 * obi))
+        micro_ratio = curr_ratio * (1.0 + (0.0015 * obi))
 
     ofi_norm = max(-1.0, min(1.0, obi - (0.4 * prev_obi) + (tick_ret_pct * 0.9)))
-    alpha_micro_pct = (0.45 * obi * 0.45) + (0.35 * ofi_norm * 0.40) + (0.55 * tick_ret_pct)
+    alpha_micro_pct = (0.45 * obi * 0.45) + (0.35 * ofi_norm * 0.40) + (0.60 * tick_ret_pct)
     alpha_micro_pct = max(-1.50, min(1.50, alpha_micro_pct))
 
     return {
@@ -204,47 +193,41 @@ def compute_avellaneda_stoikov_quotes(
     obi: float,
     holding_ticks: int,
     avg_entry_ratio: float,
+    tick_ret_pct: float = 0.0,
 ) -> Dict[str, Any]:
     """
-    Computes the Avellaneda-Stoikov Reservation Price r(s, q) and Optimal Bid/Ask Quotes:
-      r(s, q) = s * (1 + beta * alpha_micro - q * gamma * sigma^2 * tau)
-      half_spread = max(min_spread, 0.5 * gamma * sigma^2 * tau + (1/gamma)*ln(1 + gamma/kappa))
+    Computes realistic Maker Bid (Buy Target) and Maker Ask (Sell Target -> SOL).
+    - When holding 100% SOL (q = 0):
+      Places a Maker Bid at -0.12% to -0.22% below current live price so real market micro-dips fill it.
+      If a sharp dump occurs (tick_ret_pct <= -0.45% or OBI < -0.38), Crash Shield activates and pulls Bid down!
+    - When holding Token (q > 0):
+      Places a Maker Ask at +0.20% above Bought Price (avg_entry_ratio).
+      As holding_ticks increases, Inventory Skew lowers the Ask target down to +0.04% above Bought Price
+      (which still nets +0.21% pure SOL profit thanks to the +0.17% round-trip Maker Rebates!).
     """
-    sigma = max(0.0065, min(0.035, sigma_pct / 100.0))
-    # Time horizon urgency increases as holding_ticks grows so the bot NEVER freezes holding bags
-    tau = 1.0 + min(2.5, holding_ticks * 0.12)
+    toxic_dump = (tick_ret_pct <= -0.45) or (tick_ret_pct <= -0.25 and obi < -0.45)
 
-    alpha_frac = (alpha_micro_pct / 100.0) * BETA_MICRO_ALPHA
-    inventory_skew_frac = inventory_q * GAMMA_RISK_AVERSION * (sigma ** 2) * tau * 8.5
+    # Reservation shift
+    skew_frac = inventory_q * 0.0025 * (1.0 + min(2.0, holding_ticks * 0.10))
+    reservation_ratio = mid_ratio * (1.0 - skew_frac)
 
-    # Reservation price in SOL
-    reservation_ratio = mid_ratio * (1.0 + alpha_frac - inventory_skew_frac)
+    if toxic_dump:
+        # Pull Bid deep (-1.50% below spot) so it never catches a falling knife
+        bid_quote = mid_ratio * 0.9850
+    elif inventory_q > 0.05:
+        # Already holding token: keep Bid far down (-0.80%) so we don't double-bag
+        bid_quote = mid_ratio * 0.9920
+    else:
+        # Ready in 100% SOL: place realistic Maker Bid -0.12% below current spot to catch normal dips
+        bid_quote = mid_ratio * 0.9988
 
-    # Optimal base half-spread (typically ~0.22% to ~0.48%)
-    as_half_spread = 0.5 * GAMMA_RISK_AVERSION * (sigma ** 2) * tau + (0.0022 * math.log(1.0 + GAMMA_RISK_AVERSION / KAPPA_INTENSITY))
-    base_half_spread = max(0.0022, min(0.0065, as_half_spread))
-
-    # Toxic Flow Defense: If OBI or alpha_micro is bearish, widen Bid downward to avoid falling knives
-    toxic_dump = (obi < -0.38) or (alpha_micro_pct < -0.28)
-    bid_defensive_mult = 2.2 if toxic_dump else (1.5 if inventory_q > 0.15 else 1.0)
-    ask_urgency_mult = max(0.45, 1.0 - (0.45 * inventory_q))
-
-    bid_offset = base_half_spread * bid_defensive_mult
-    ask_offset = base_half_spread * ask_urgency_mult
-
-    bid_quote = reservation_ratio * (1.0 - bid_offset)
-    ask_quote = reservation_ratio * (1.0 + ask_offset)
-
-    # If holding inventory, ensure Ask is positioned to lock positive SOL profit or dynamic skew exit
     if inventory_q > 0.01 and avg_entry_ratio > 0:
-        # Because we EARN +0.085% Maker rebate on entry AND +0.085% on exit (+0.17% total rebate),
-        # even selling at +0.18% above avg_entry_ratio yields +0.35% net SOL profit!
-        min_profitable_ask = avg_entry_ratio * 1.0022
-        if holding_ticks <= 18:
-            ask_quote = max(ask_quote, min_profitable_ask)
-        else:
-            # After 18 ticks, allow dynamic break-even evacuation funded by the +0.17% Maker Rebate
-            ask_quote = max(mid_ratio * 1.0005, avg_entry_ratio * 0.9990)
+        # Target +0.22% above entry initially, gently skewing down to +0.04% as holding_ticks grows
+        # (Remember: +0.085% entry rebate + +0.085% exit rebate = +0.17% extra SOL profit on top!)
+        target_markup = max(0.0004, 0.0022 - (holding_ticks * 0.00015))
+        ask_quote = avg_entry_ratio * (1.0 + target_markup)
+    else:
+        ask_quote = mid_ratio * 1.0022
 
     spread_bps = ((ask_quote - bid_quote) / mid_ratio) * 10000.0 if mid_ratio > 0 else 0.0
     skew_bps = ((reservation_ratio - mid_ratio) / mid_ratio) * 10000.0 if mid_ratio > 0 else 0.0
@@ -343,7 +326,8 @@ def evaluate_as_maker_tick(
     client_state: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
-    Main real-time execution tick for Engine 5 (Avellaneda-Stoikov Smart Maker & DLMM Engine).
+    Main real-time execution tick for Engine 5 (Smart Maker & DLMM Engine V2).
+    Executes ONLY on genuine Jupiter price movements crossing resting Maker Bid / Ask quotes.
     """
     state = client_state if _is_valid_as_state(client_state) else load_as_state()
     now = time.time()
@@ -388,14 +372,15 @@ def evaluate_as_maker_tick(
                 obi=micro["obi"],
                 holding_ticks=0,
                 avg_entry_ratio=0.0,
+                tick_ret_pct=0.0,
             )
 
             maker_slots[sym] = {
                 "symbol": sym,
                 "venue": "Meteora DLMM + Phoenix CLOB",
                 "initial_sol": VAULT_ALLOCATION_SOL,
-                "sol_cash": VAULT_ALLOCATION_SOL,      # 100% SOL Cash at start!
-                "tokens_held": 0.0,                    # 0 Tokens held at start!
+                "sol_cash": VAULT_ALLOCATION_SOL,
+                "tokens_held": 0.0,
                 "token_sol_val": 0.0,
                 "vault_equity_sol": VAULT_ALLOCATION_SOL,
                 "inventory_q_pct": 0.0,
@@ -420,8 +405,8 @@ def evaluate_as_maker_tick(
                 "ask_fills": 0,
                 "accumulated_sol_profit": 0.0,
                 "maker_rebates_earned_sol": 0.0,
-                "status_badge": "QUOTING BID (100% SOL)",
-                "last_action": "Vault Initialized 100% SOL (Zero IL)",
+                "status_badge": "100% IN SOL (WAITING FOR DIP)",
+                "last_action": "Vault Ready in 100% SOL • Waiting for live price to touch Buy Target",
                 "ratio_history": [curr_ratio, curr_ratio],
             }
 
@@ -432,7 +417,7 @@ def evaluate_as_maker_tick(
         save_as_state(state)
         return state
 
-    # 2. Evaluate Live Orderbook Microstructure, Fill Resting Maker Quotes, and Re-Skew Quotes
+    # 2. Evaluate Real-Time Price Movements Against Resting Maker Quotes
     total_maker_rebates = float(state.get("total_maker_rebates_sol", 0.0))
     total_gas_paid = float(state.get("total_gas_paid_sol", 0.0))
     accumulated_sol = float(state.get("accumulated_sol_profit", 0.0))
@@ -456,15 +441,19 @@ def evaluate_as_maker_tick(
         tok_usd = float(p_info.get("base_usd", curr_ratio * (sol_usd or 85.0)))
         slot["token_usd"] = tok_usd
 
-        # Update rolling ratio history (last 20 ticks) for realized micro-volatility
+        # Did the live Jupiter ratio actually move on this tick?
+        price_moved = abs(curr_ratio - prev_ratio) / prev_ratio >= 0.00005 if prev_ratio > 0 else False
+
         r_hist: List[float] = list(slot.get("ratio_history", [curr_ratio]))
-        r_hist.append(curr_ratio)
-        if len(r_hist) > 20:
-            r_hist = r_hist[-20:]
+        if price_moved:
+            r_hist.append(curr_ratio)
+            if len(r_hist) > 20:
+                r_hist = r_hist[-20:]
         slot["ratio_history"] = r_hist
 
         prev_obi = float(slot.get("obi", 0.0))
         micro = compute_microstructure_metrics(sym, curr_ratio, prev_ratio, prev_obi, sol_usd, l1_books)
+        tick_ret_pct = micro["tick_ret_pct"]
 
         sol_cash = float(slot.get("sol_cash", VAULT_ALLOCATION_SOL))
         tokens_held = float(slot.get("tokens_held", 0.0))
@@ -472,37 +461,27 @@ def evaluate_as_maker_tick(
         holding_ticks = int(slot.get("holding_ticks", 0))
         quiet_ticks = int(slot.get("QuietTicks", 0))
 
-        resting_bid = float(slot.get("bid_quote", curr_ratio * 0.997))
-        resting_ask = float(slot.get("ask_quote", curr_ratio * 1.003))
+        resting_bid = float(slot.get("bid_quote", curr_ratio * 0.9988))
+        resting_ask = float(slot.get("ask_quote", curr_ratio * 1.0022))
 
         # ---------------------------------------------------------------------
-        # A. CHECK RESTING MAKER ASK FILL (Inventory Evacuation -> Pure SOL!)
+        # A. REAL MAKER ASK FILL (WhenHolding Token & Live Price Rises >= Sell Target)
         # ---------------------------------------------------------------------
         if tokens_held > 0 and gas_reserve >= MIN_GAS_FLOOR_SOL:
-            holding_ticks += 1
-            # Fill condition:
-            # 1) Live ratio or micro_ratio crosses resting_ask, OR
-            # 2) Position is profitable above avg_entry and micro-alpha/OBI shows buying exhaustion, OR
-            # 3) Dynamic DLMM bin rebalance after holding_ticks >= 6 when micro spread is positive
-            effective_high = max(curr_ratio, micro["micro_ratio"])
-            unrealized_pct = ((effective_high - avg_entry) / avg_entry) * 100.0 if avg_entry > 0 else 0.0
+            if price_moved:
+                holding_ticks += 1
 
-            ask_crossed = effective_high >= resting_ask
-            profit_lock_trigger = (unrealized_pct >= 0.22) and (micro["obi"] <= 0.15 or holding_ticks >= 3)
-            bin_rotation_trigger = (holding_ticks >= 5) and (unrealized_pct >= 0.08)
-
-            if ask_crossed or profit_lock_trigger or bin_rotation_trigger:
-                exec_ask_ratio = max(curr_ratio, resting_ask if ask_crossed else effective_high)
-                # Ensure realistic execution bound within +0.65% of current spot
-                exec_ask_ratio = min(exec_ask_ratio, curr_ratio * 1.0065)
-                exec_ask_ratio = max(exec_ask_ratio, avg_entry * 1.0018)
-
+            # STRICT REAL EXECUTION: Live Jupiter ratio must actually reach or exceed resting_ask!
+            if price_moved and curr_ratio >= resting_ask:
+                exec_ask_ratio = curr_ratio
                 gross_sol_out = tokens_held * exec_ask_ratio
                 maker_rebate_sol = gross_sol_out * MAKER_REBATE_RATE
                 net_sol_received = gross_sol_out + maker_rebate_sol
 
-                cost_basis_sol = tokens_held * avg_entry
-                cycle_net_sol_profit = (net_sol_received - cost_basis_sol) - SOL_BASE_GAS_FEE
+                # True SOL profit vs the exact SOL spent on the Bid fill
+                sol_spent_on_bid = float(slot.get("last_tranche_sol", tokens_held * avg_entry))
+                entry_rebate_sol = sol_spent_on_bid * MAKER_REBATE_RATE
+                cycle_net_sol_profit = (net_sol_received - sol_spent_on_bid) + entry_rebate_sol - (2.0 * SOL_BASE_GAS_FEE)
                 spread_captured_pct = ((exec_ask_ratio - avg_entry) / avg_entry) * 100.0 if avg_entry > 0 else 0.0
 
                 sol_cash += net_sol_received
@@ -516,6 +495,7 @@ def evaluate_as_maker_tick(
                 slot["sol_cash"] = sol_cash
                 slot["tokens_held"] = 0.0
                 slot["avg_entry_ratio"] = 0.0
+                slot["last_tranche_sol"] = 0.0
                 slot["holding_ticks"] = 0
                 slot["QuietTicks"] = 0
                 slot["ask_fills"] = int(slot.get("ask_fills", 0)) + 1
@@ -523,8 +503,8 @@ def evaluate_as_maker_tick(
                 slot["accumulated_sol_profit"] = float(slot.get("accumulated_sol_profit", 0.0)) + cycle_net_sol_profit
                 slot["maker_rebates_earned_sol"] = float(slot.get("maker_rebates_earned_sol", 0.0)) + maker_rebate_sol
                 slot["last_action"] = (
-                    f"MAKER ASK FILL: -{tokens_sold:,.2f} {sym} -> +{net_sol_received:.5f} SOL "
-                    f"(+{cycle_net_sol_profit:.5f} SOL Net | Rebate +{maker_rebate_sol:.5f})"
+                    f"SOLD TO SOL: -{tokens_sold:,.2f} {sym} ➔ +{net_sol_received:.5f} SOL "
+                    f"(Net Profit: +{cycle_net_sol_profit:.5f} SOL)"
                 )
 
                 total_maker_rebates += maker_rebate_sol
@@ -541,96 +521,86 @@ def evaluate_as_maker_tick(
                         "time": now,
                         "type": "MAKER_ASK_SOL_HARVEST",
                         "symbol": sym,
-                        "side": "ASK_FILL (TOKEN -> SOL)",
-                        "action": f"Maker Ask Fill: Sold {tokens_sold:,.4f} {sym} -> +{net_sol_received:.5f} SOL",
+                        "side": "SOLD ➔ SOL",
+                        "action": f"Sold {tokens_sold:,.4f} {sym} ➔ +{net_sol_received:.5f} SOL",
                         "tranche_sol": round(net_sol_received, 5),
                         "exec_ratio": exec_ask_ratio,
                         "spread_captured_pct": round(spread_captured_pct, 3),
                         "maker_rebate_sol": round(maker_rebate_sol, 6),
                         "net_profit_sol": round(cycle_net_sol_profit, 5),
                         "reason": (
-                            f"Avellaneda-Stoikov Skew Exit (+{spread_captured_pct:.2f}% Spread + "
-                            f"+{MAKER_REBATE_RATE*200:.2f}% Round-Trip Maker Rebate) -> 100% SOL Vault"
+                            f"Live price reached Sell Target (+{spread_captured_pct:.2f}% move + "
+                            f"Maker Rebates) ➔ 100% Back in SOL"
                         ),
                     },
                 )
 
         # ---------------------------------------------------------------------
-        # B. CHECK RESTING MAKER BID FILL (Discounted Entry + Maker Rebate!)
+        # B. REAL MAKER BID FILL (When in 100% SOL & Live Price Dips <= Buy Target)
         # ---------------------------------------------------------------------
         elif tokens_held <= 0 and sol_cash >= 0.02000 and gas_reserve >= MIN_GAS_FLOOR_SOL:
-            quiet_ticks += 1
-            toxic_dump = (micro["obi"] < -0.38) or (micro["alpha_micro_pct"] < -0.28)
-            if toxic_dump:
+            toxic_dump = (tick_ret_pct <= -0.45) or (tick_ret_pct <= -0.25 and micro["obi"] < -0.45)
+            if toxic_dump and price_moved:
                 shields_count += 1
-                slot["last_action"] = f"TOXIC SHIELD: Pulled {sym} Bid (OBI {micro['obi']:+.2f} Bearish)"
-            else:
-                # Fill condition:
-                # 1) Spot ratio dips to touch resting_bid while OBI is non-toxic, OR
-                # 2) Micro-Price leads upward (alpha_micro >= +0.08%) and our top-of-book Maker Bid captures incoming flow
-                effective_low = min(curr_ratio, micro["micro_ratio"])
-                bid_touched = curr_ratio <= resting_bid
-                active_bin_capture = (quiet_ticks >= 2) and (micro["obi"] >= -0.15) and (micro["alpha_micro_pct"] >= -0.08)
+                slot["last_action"] = f"CRASH SHIELD ON: {sym} dropping fast ({tick_ret_pct:+.2f}%) • Buy Paused"
+            elif price_moved and curr_ratio <= resting_bid:
+                # Real Jupiter price dipped to touch/cross our resting Maker Bid!
+                tranche_sol = round(sol_cash * TRANCHE_UTILIZATION, 5)
+                exec_bid_ratio = curr_ratio
 
-                if bid_touched or active_bin_capture:
-                    tranche_sol = round(sol_cash * TRANCHE_UTILIZATION, 5)
-                    # Maker Bid executes at the discounted Bid quote (below mid-price)
-                    exec_bid_ratio = min(curr_ratio * 0.9982, resting_bid if bid_touched else curr_ratio * 0.9980)
-                    exec_bid_ratio = max(exec_bid_ratio, curr_ratio * 0.9945)
+                maker_rebate_sol = tranche_sol * MAKER_REBATE_RATE
+                effective_sol_deployed = tranche_sol + maker_rebate_sol
+                tokens_acquired = effective_sol_deployed / exec_bid_ratio
 
-                    # Maker Rebate / DLMM Bin Fee EARNED on Bid Fill!
-                    maker_rebate_sol = tranche_sol * MAKER_REBATE_RATE
-                    effective_sol_deployed = tranche_sol + maker_rebate_sol
-                    tokens_acquired = effective_sol_deployed / exec_bid_ratio
+                sol_cash -= tranche_sol
+                tokens_held = tokens_acquired
+                avg_entry = exec_bid_ratio
+                holding_ticks = 0
+                quiet_ticks = 0
+                gas_reserve -= SOL_BASE_GAS_FEE
 
-                    sol_cash -= tranche_sol
-                    tokens_held = tokens_acquired
-                    avg_entry = tranche_sol / tokens_acquired  # True SOL cost per token (lower than exec_bid_ratio thanks to rebate!)
-                    holding_ticks = 0
-                    quiet_ticks = 0
-                    gas_reserve -= SOL_BASE_GAS_FEE
+                slot["sol_cash"] = sol_cash
+                slot["tokens_held"] = tokens_held
+                slot["avg_entry_ratio"] = avg_entry
+                slot["last_tranche_sol"] = tranche_sol
+                slot["holding_ticks"] = 0
+                slot["QuietTicks"] = 0
+                slot["bid_fills"] = int(slot.get("bid_fills", 0)) + 1
+                slot["maker_rebates_earned_sol"] = float(slot.get("maker_rebates_earned_sol", 0.0)) + maker_rebate_sol
+                slot["last_action"] = (
+                    f"BOUGHT DIP: {tranche_sol:.4f} SOL ➔ +{tokens_acquired:,.2f} {sym} "
+                    f"(Earned +{maker_rebate_sol:.5f} SOL Maker Fee)"
+                )
 
-                    slot["sol_cash"] = sol_cash
-                    slot["tokens_held"] = tokens_held
-                    slot["avg_entry_ratio"] = avg_entry
-                    slot["holding_ticks"] = 0
-                    slot["QuietTicks"] = 0
-                    slot["bid_fills"] = int(slot.get("bid_fills", 0)) + 1
-                    slot["maker_rebates_earned_sol"] = float(slot.get("maker_rebates_earned_sol", 0.0)) + maker_rebate_sol
-                    slot["last_action"] = (
-                        f"MAKER BID FILL: {tranche_sol:.4f} SOL -> +{tokens_acquired:,.2f} {sym} "
-                        f"(Rebate +{maker_rebate_sol:.5f} SOL)"
-                    )
+                total_maker_rebates += maker_rebate_sol
+                total_gas_paid += SOL_BASE_GAS_FEE
+                maker_fills += 1
+                bid_fills += 1
 
-                    total_maker_rebates += maker_rebate_sol
-                    total_gas_paid += SOL_BASE_GAS_FEE
-                    maker_fills += 1
-                    bid_fills += 1
-
-                    discount_bps = ((curr_ratio - exec_bid_ratio) / curr_ratio) * 10000.0 if curr_ratio > 0 else 0.0
-                    trade_history.insert(
-                        0,
-                        {
-                            "id": f"as_bid_{int(now * 1000)}_{sym}_{maker_fills}",
-                            "time": now,
-                            "type": "MAKER_BID_DISCOUNT_FILL",
-                            "symbol": sym,
-                            "side": "BID_FILL (SOL -> TOKEN)",
-                            "action": f"Maker Bid Fill: {tranche_sol:.4f} SOL -> +{tokens_acquired:,.4f} {sym}",
-                            "tranche_sol": round(tranche_sol, 5),
-                            "exec_ratio": exec_bid_ratio,
-                            "spread_captured_pct": round(discount_bps / 100.0, 3),
-                            "maker_rebate_sol": round(maker_rebate_sol, 6),
-                            "net_profit_sol": round(maker_rebate_sol - SOL_BASE_GAS_FEE, 5),
-                            "reason": (
-                                f"Post-Only Bid Filled at -{discount_bps:.1f} bps Discount | "
-                                f"OBI {micro['obi']:+.2f} Safe | Earned +{maker_rebate_sol:.5f} SOL Rebate"
-                            ),
-                        },
-                    )
+                dip_pct = abs(tick_ret_pct)
+                trade_history.insert(
+                    0,
+                    {
+                        "id": f"as_bid_{int(now * 1000)}_{sym}_{maker_fills}",
+                        "time": now,
+                        "type": "MAKER_BID_DISCOUNT_FILL",
+                        "symbol": sym,
+                        "side": "BOUGHT DIP",
+                        "action": f"Bought {tokens_acquired:,.4f} {sym} with {tranche_sol:.4f} SOL",
+                        "tranche_sol": round(tranche_sol, 5),
+                        "exec_ratio": exec_bid_ratio,
+                        "spread_captured_pct": round(dip_pct, 3),
+                        "maker_rebate_sol": round(maker_rebate_sol, 6),
+                        "net_profit_sol": round(maker_rebate_sol - SOL_BASE_GAS_FEE, 5),
+                        "reason": f"Live price touched Buy Target (-{dip_pct:.2f}% dip) • Earned +{maker_rebate_sol:.5f} SOL Fee",
+                    },
+                )
+            elif price_moved and curr_ratio > resting_bid:
+                # If price drifted higher while we are in 100% SOL, trail our resting Maker Bid up underneath spot (-0.12%)
+                pass
 
         # ---------------------------------------------------------------------
-        # C. RECOMPUTE AVELLANEDA-STOIKOV RESERVATION PRICE & SKEWED QUOTES
+        # C. UPDATE BUY / SELL TARGETS FOR NEXT REAL PRICE MOVE
         # ---------------------------------------------------------------------
         token_sol_val = tokens_held * curr_ratio
         vault_equity = sol_cash + token_sol_val
@@ -646,14 +616,15 @@ def evaluate_as_maker_tick(
             obi=micro["obi"],
             holding_ticks=holding_ticks,
             avg_entry_ratio=avg_entry,
+            tick_ret_pct=tick_ret_pct,
         )
 
         if quotes["toxic_shield_active"] and inv_q <= 0.01:
-            status_badge = "SHIELD ACTIVE (BID PULLED)"
+            status_badge = "CRASH SHIELD (BUY PAUSED)"
         elif inv_q > 0.05:
-            status_badge = f"SKEW UNLOADING (q={inv_q*100:.0f}%)"
+            status_badge = "HOLDING TOKEN (SELLING ➔ SOL)"
         else:
-            status_badge = "QUOTING BID (100% SOL)"
+            status_badge = "100% IN SOL (WAITING FOR DIP)"
 
         slot.update(
             {
